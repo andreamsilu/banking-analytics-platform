@@ -25,7 +25,7 @@ from src.dashboard_utils import (
     _top_share,
 )
 
-# Board targets (illustrative Tanzania retail banking demo thresholds).
+# Board targets for Tanzania retail banking monitoring.
 TARGET_DIGITAL_ADOPTION = 70.0
 TARGET_NPL_RATIO = 10.0
 TARGET_ON_TIME = 85.0
@@ -153,7 +153,7 @@ def build_kpi_ribbon(data: dict[str, pd.DataFrame]) -> list[dict[str, Any]]:
             "display": format_tzs(deposits_now),
             "mom_pct": _pct_change(deposits_now, deposits_prev),
             "status": _status_for_kpi("total_deposits", deposits_now),
-            "help": "Sum of account balances (deposit book proxy).",
+            "help": "Sum of account balances across the deposit book.",
         },
         {
             "key": "total_transactions",
@@ -181,7 +181,7 @@ def build_kpi_ribbon(data: dict[str, pd.DataFrame]) -> list[dict[str, Any]]:
             "mom_pct": credit_now["at_risk_rate"] - credit_prev["at_risk_rate"],
             "mom_is_pp": True,
             "status": _status_for_kpi("npl_ratio", credit_now["at_risk_rate"]),
-            "help": "Late + Default loans as % of loan book (demo NPL proxy).",
+            "help": "Late + Default loans as a share of the loan book (NPL monitoring ratio).",
         },
         {
             "key": "digital_share",
@@ -290,7 +290,7 @@ def build_action_panel(data: dict[str, pd.DataFrame], ribbon: list[dict[str, Any
         f"On-time repayment stands at {credit['on_time_rate']:.1f}% of the loan book.",
     ]
     watchlist = [
-        f"NPL proxy (late + default) is {npl['value']:.1f}% versus a {TARGET_NPL_RATIO:.0f}% board threshold.",
+        f"NPL ratio (late + default) is {npl['value']:.1f}% versus a {TARGET_NPL_RATIO:.0f}% board threshold.",
         f"{risk_region} shows the highest default rate at {risk_rate:.1f}%.",
         f"Premium customers are {premium_share:.1f}% of the base but hold {premium_bal_share:.1f}% of balances — concentration risk and opportunity.",
     ]
@@ -363,7 +363,7 @@ def build_management_actions(data: dict[str, pd.DataFrame]) -> list[dict[str, st
             "priority": "High",
             "area": "Credit Risk",
             "recommendation": f"Increase collection efforts for overdue loans in {risk_region}.",
-            "benefit": "Reduce default rate and stabilize NPL proxy.",
+            "benefit": "Reduce default rate and stabilize the NPL ratio.",
             "timeline": "30 Days",
         },
         {
@@ -591,7 +591,7 @@ def create_repayment_chart_with_target(loans: pd.DataFrame) -> go.Figure:
     )
     return apply_chart_theme(
         fig,
-        subtitle=f"On-time {credit['on_time_rate']:.1f}% · Board target ≥ {TARGET_ON_TIME:.0f}% · NPL proxy target ≤ {TARGET_NPL_RATIO:.0f}%",
+        subtitle=f"On-time {credit['on_time_rate']:.1f}% · Board target ≥ {TARGET_ON_TIME:.0f}% · NPL target ≤ {TARGET_NPL_RATIO:.0f}%",
     )
 
 

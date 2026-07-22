@@ -254,18 +254,13 @@ def format_mom(pct: float, is_pp: bool = False) -> str:
 
 def render_period_banner(data: dict) -> None:
     meta = du.reporting_period(data)
-    note = (
-        "Demo sample portfolio for executive presentation."
-        if meta["is_sample"]
-        else "Full synthetic portfolio (local analysis)."
-    )
     st.markdown(
         f"""
         <div class="period-banner">
             <strong>Reporting period:</strong> {meta['period_label']}
             &nbsp;·&nbsp; <strong>Currency:</strong> {meta['currency']}
-            &nbsp;·&nbsp; <strong>View:</strong> {meta['view_label']} ({meta['customer_count']} customers)
-            <br/><span style="color:#64748b;">{note}</span>
+            &nbsp;·&nbsp; <strong>Data layer:</strong> {meta['view_label']}
+            &nbsp;·&nbsp; <strong>Customers:</strong> {meta['customer_count']}
         </div>
         """,
         unsafe_allow_html=True,
@@ -557,7 +552,7 @@ def page_credit(data: dict) -> None:
     c1.metric("On-time repayment", f"{credit['on_time_rate']:.1f}%")
     c2.metric("Watchlist (late)", f"{credit['watchlist_rate']:.1f}%")
     c3.metric("Default rate", f"{credit['default_rate']:.1f}%")
-    c4.metric("NPL proxy (late+default)", f"{credit['at_risk_rate']:.1f}%")
+    c4.metric("NPL ratio (late+default)", f"{credit['at_risk_rate']:.1f}%")
 
     col1, col2 = st.columns(2)
     with col1:

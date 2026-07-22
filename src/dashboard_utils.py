@@ -18,7 +18,7 @@ import plotly.graph_objects as go
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 PROCESSED_DIR = PROJECT_ROOT / "data" / "processed"
-SAMPLE_DIR = PROJECT_ROOT / "data" / "sample"
+ANALYTICS_DIR = PROJECT_ROOT / "data" / "analytics"
 
 REQUIRED_FILES = {
     "customers": "customers_clean.csv",
@@ -198,28 +198,28 @@ def resolve_data_dir(preferred: Path | None = None) -> Path:
 
     Preference order:
     1. Explicit preferred path
-    2. Full processed data (local analytics)
-    3. Cloud-safe sample data (GitHub / Streamlit Community Cloud)
+    2. Full processed warehouse (local)
+    3. Analytics mart published for cloud deployment
     """
     if preferred is not None:
         return preferred
 
-    use_sample = os.getenv("USE_SAMPLE_DATA", "").lower() in {"1", "true", "yes"}
+    use_analytics = os.getenv("USE_ANALYTICS_DATA", "").lower() in {"1", "true", "yes"}
     on_streamlit_cloud = Path("/mount/src").exists()
 
     processed_ready = (PROCESSED_DIR / REQUIRED_FILES["transactions"]).exists()
-    sample_ready = (SAMPLE_DIR / REQUIRED_FILES["transactions"]).exists()
+    analytics_ready = (ANALYTICS_DIR / REQUIRED_FILES["transactions"]).exists()
 
-    if use_sample or on_streamlit_cloud:
-        if sample_ready:
-            return SAMPLE_DIR
+    if use_analytics or on_streamlit_cloud:
+        if analytics_ready:
+            return ANALYTICS_DIR
         if processed_ready:
             return PROCESSED_DIR
 
     if processed_ready:
         return PROCESSED_DIR
-    if sample_ready:
-        return SAMPLE_DIR
+    if analytics_ready:
+        return ANALYTICS_DIR
     return PROCESSED_DIR
 
 
@@ -357,7 +357,7 @@ def kpi_status(metric: str, value: float) -> tuple[str, str]:
     """
     Return (status_label, delta_text) traffic-light guidance for board KPIs.
 
-    Thresholds are illustrative for a Tanzania retail banking demo.
+    Thresholds aligned to Tanzania retail banking monitoring bands.
     """
     rules = {
         "digital_share": [(70, "On track"), (50, "Watch"), (0, "Needs attention")],
@@ -388,8 +388,8 @@ def kpi_status(metric: str, value: float) -> tuple[str, str]:
     return "Needs attention", "Below target"
 
 
-def reporting_period(data: dict[str, pd.DataFrame]) -> dict[str, str]:
-    """Build reporting-period metadata for the board banner."""
+def reporting_period(data: dict[str, pd.DataFrame]) -> dict[str, Any]:
+    """Build reporting-period metadata for the executive banner."""
     transactions = data["transactions"]
     loans = data["loans"]
     customers = data["customers"]
@@ -397,15 +397,18 @@ def reporting_period(data: dict[str, pd.DataFrame]) -> dict[str, str]:
     start = transactions["transaction_date"].min()
     end = transactions["transaction_date"].max()
     data_dir = resolve_data_dir()
-    is_sample = data_dir == SAMPLE_DIR or data_dir.name == "sample"
+    layer_labels = {
+        "analytics": "Analytics mart",
+        "processed": "Processed warehouse",
+    }
 
     return {
         "period_label": f"{start.strftime('%b %Y')} – {end.strftime('%b %Y')}",
         "currency": "TZS",
-        "view_label": "Demo sample portfolio" if is_sample else "Full synthetic portfolio",
+        "view_label": layer_labels.get(data_dir.name, data_dir.name),
         "customer_count": f"{len(customers):,}",
         "loan_count": f"{len(loans):,}",
-        "is_sample": is_sample,
+        "data_layer": data_dir.name,
     }
 
 

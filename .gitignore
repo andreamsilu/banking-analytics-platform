@@ -14,15 +14,15 @@ __pycache__/
 .ipynb_checkpoints/
 */.ipynb_checkpoints/
 
-# Local full datasets (too large for GitHub / Streamlit Cloud)
+# Local full warehouse extracts (large files)
 data/raw/
 data/processed/
 
-# Keep cloud-safe sample datasets
-!data/sample/
-!data/sample/**
+# Publish analytics mart to GitHub / Streamlit Cloud
+!data/analytics/
+!data/analytics/**
 
-# Reports with large exports (optional local artifacts)
+# Local report exports
 reports/**/*.csv
 reports/**/charts/
 
