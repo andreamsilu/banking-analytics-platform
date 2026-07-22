@@ -37,6 +37,111 @@ CSS = """
 <style>
     .block-container { padding-top: 1rem; max-width: 1220px; }
 
+    /* ---------- Sidebar shell ---------- */
+    section[data-testid="stSidebar"] {
+        border-right: 1px solid rgba(128, 128, 128, 0.25);
+    }
+    section[data-testid="stSidebar"] > div {
+        padding-top: 0.75rem;
+    }
+    section[data-testid="stSidebar"] .block-container {
+        padding-top: 0.5rem;
+    }
+
+    .sidebar-brand {
+        background: linear-gradient(145deg, #1f4e79 0%, #2e75b6 100%);
+        color: #f8fafc;
+        border-radius: 14px;
+        padding: 1rem 1rem 0.95rem;
+        margin: 0 0 1rem 0;
+        box-shadow: 0 8px 20px rgba(31, 78, 121, 0.25);
+    }
+    .sidebar-brand .brand-kicker {
+        font-size: 0.7rem;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+        opacity: 0.85;
+        font-weight: 700;
+        margin-bottom: 0.25rem;
+    }
+    .sidebar-brand .brand-title {
+        font-size: 1.15rem;
+        font-weight: 700;
+        line-height: 1.25;
+        margin: 0;
+    }
+    .sidebar-brand .brand-sub {
+        font-size: 0.8rem;
+        opacity: 0.9;
+        margin-top: 0.35rem;
+        line-height: 1.35;
+    }
+
+    .sidebar-section-label {
+        font-size: 0.72rem;
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
+        font-weight: 700;
+        color: #64748b;
+        margin: 0.35rem 0 0.55rem 0;
+    }
+
+    .sidebar-card {
+        background: rgba(128, 128, 128, 0.08);
+        border: 1px solid rgba(128, 128, 128, 0.22);
+        border-radius: 12px;
+        padding: 0.75rem 0.85rem;
+        margin: 0.65rem 0 0.85rem 0;
+        color: inherit;
+    }
+    .sidebar-card strong {
+        display: block;
+        margin-bottom: 0.35rem;
+        font-size: 0.85rem;
+    }
+    .sidebar-card p, .sidebar-card li {
+        font-size: 0.8rem;
+        line-height: 1.45;
+        margin: 0;
+        opacity: 0.92;
+    }
+
+    /* Navigation radio → button-style items */
+    section[data-testid="stSidebar"] div[role="radiogroup"] {
+        gap: 0.45rem;
+        display: flex;
+        flex-direction: column;
+    }
+    section[data-testid="stSidebar"] div[role="radiogroup"] label {
+        background: rgba(128, 128, 128, 0.08);
+        border: 1px solid rgba(128, 128, 128, 0.22);
+        border-radius: 10px;
+        padding: 0.7rem 0.85rem !important;
+        margin: 0 !important;
+        transition: background 0.15s ease, border-color 0.15s ease, transform 0.15s ease;
+        cursor: pointer;
+    }
+    section[data-testid="stSidebar"] div[role="radiogroup"] label:hover {
+        background: rgba(46, 117, 182, 0.14);
+        border-color: rgba(46, 117, 182, 0.45);
+        transform: translateX(2px);
+    }
+    section[data-testid="stSidebar"] div[role="radiogroup"] label:has(input:checked) {
+        background: rgba(31, 78, 121, 0.18);
+        border-color: #2e75b6;
+        box-shadow: inset 3px 0 0 #1f4e79;
+        font-weight: 600;
+    }
+    section[data-testid="stSidebar"] div[role="radiogroup"] label p {
+        font-size: 0.92rem !important;
+        font-weight: 500;
+    }
+
+    /* Hide default radio "Navigate" label clutter if present */
+    section[data-testid="stSidebar"] .stRadio > label {
+        display: none;
+    }
+
     /* Metric cards: inherit theme colors so Light/Dark both stay readable */
     div[data-testid="stMetric"] {
         background: rgba(128, 128, 128, 0.08);
@@ -90,8 +195,15 @@ CSS = """
         color: inherit;
     }
 
-    /* Brand accent that remains readable in both themes */
-    h1, h2, h3 { color: #2e75b6; }
+    /* Sidebar filter section headers */
+    section[data-testid="stSidebar"] h3 {
+        font-size: 0.72rem !important;
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
+        font-weight: 700 !important;
+        color: #64748b !important;
+        margin-top: 0.5rem !important;
+    }
 </style>
 """
 st.markdown(CSS, unsafe_allow_html=True)
@@ -446,30 +558,47 @@ def page_credit(data: dict) -> None:
 
 
 def main() -> None:
-    st.sidebar.title("🏦 Banking Executive BI")
-    st.sidebar.markdown("**Decision-support platform**")
-    st.sidebar.caption("Built for CEO · CFO · COO · Head of Retail · Head of Risk")
+    st.sidebar.markdown(
+        """
+        <div class="sidebar-brand">
+            <div class="brand-kicker">Tanzania Banking Intelligence</div>
+            <p class="brand-title">🏦 Executive BI Platform</p>
+            <div class="brand-sub">Decision support for CEO · CFO · COO · Retail · Risk</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
+    st.sidebar.markdown('<div class="sidebar-section-label">Navigation</div>', unsafe_allow_html=True)
     page = st.sidebar.radio(
         "Navigate",
         [
-            "📊 Executive Overview",
-            "👥 Customer Analytics",
-            "💳 Transaction Analytics",
-            "🏦 Loan Portfolio Analytics",
+            "📊  Executive Overview",
+            "👥  Customer Analytics",
+            "💳  Transaction Analytics",
+            "🏦  Loan Portfolio Analytics",
         ],
+        label_visibility="collapsed",
     )
 
-    st.sidebar.divider()
-    st.sidebar.markdown("**Theme**")
-    st.sidebar.caption("Switch Light / Dark: app menu (⋮ or ☰) → Settings → Theme")
-
-    st.sidebar.divider()
-    st.sidebar.markdown("**Decision lens**")
+    st.sidebar.markdown('<div class="sidebar-section-label">Quick guide</div>', unsafe_allow_html=True)
     st.sidebar.markdown(
-        "1. What happened?\n"
-        "2. Why does it matter?\n"
-        "3. What should management do next?"
+        """
+        <div class="sidebar-card">
+            <strong>Decision lens</strong>
+            <p>1. What happened?<br/>2. Why does it matter?<br/>3. What should management do next?</p>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+    st.sidebar.markdown(
+        """
+        <div class="sidebar-card">
+            <strong>Theme</strong>
+            <p>Switch Light / Dark via the app menu (⋮ or ☰) → Settings → Theme.</p>
+        </div>
+        """,
+        unsafe_allow_html=True,
     )
 
     try:
@@ -481,11 +610,11 @@ def main() -> None:
         st.error(f"Unable to load dashboard data: {exc}")
         st.stop()
 
-    if page.startswith("📊"):
+    if "Executive Overview" in page:
         page_executive_overview(data)
-    elif page.startswith("👥"):
+    elif "Customer Analytics" in page:
         page_customers(data)
-    elif page.startswith("💳"):
+    elif "Transaction Analytics" in page:
         page_payments(data)
     else:
         page_credit(data)
