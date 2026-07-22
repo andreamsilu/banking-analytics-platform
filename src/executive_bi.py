@@ -138,7 +138,7 @@ def build_kpi_ribbon(data: dict[str, pd.DataFrame]) -> list[dict[str, Any]]:
         {
             "key": "total_customers",
             "label": "Customers",
-            "icon": "👥",
+            "icon": "group",
             "value": float(len(customers_now)),
             "display": format_count(len(customers_now)),
             "mom_pct": _pct_change(len(customers_now), len(customers_prev)),
@@ -148,7 +148,7 @@ def build_kpi_ribbon(data: dict[str, pd.DataFrame]) -> list[dict[str, Any]]:
         {
             "key": "active_customers",
             "label": "Active Customers",
-            "icon": "✅",
+            "icon": "person_check",
             "value": float(len(active_ids_now)),
             "display": format_count(len(active_ids_now)),
             "mom_pct": _pct_change(len(active_ids_now), len(active_ids_prev)),
@@ -158,7 +158,7 @@ def build_kpi_ribbon(data: dict[str, pd.DataFrame]) -> list[dict[str, Any]]:
         {
             "key": "total_deposits",
             "label": "Deposits",
-            "icon": "💰",
+            "icon": "account_balance_wallet",
             "value": deposits_now,
             "display": format_tzs(deposits_now),
             "mom_pct": _pct_change(deposits_now, deposits_prev),
@@ -168,7 +168,7 @@ def build_kpi_ribbon(data: dict[str, pd.DataFrame]) -> list[dict[str, Any]]:
         {
             "key": "total_transactions",
             "label": "Transactions",
-            "icon": "💳",
+            "icon": "payments",
             "value": float(txn_total),
             "display": format_count(txn_total),
             "mom_pct": monthly_txn_mom,
@@ -182,7 +182,7 @@ def build_kpi_ribbon(data: dict[str, pd.DataFrame]) -> list[dict[str, Any]]:
         {
             "key": "loan_portfolio",
             "label": "Loan Portfolio",
-            "icon": "🏦",
+            "icon": "account_balance",
             "value": portfolio_now,
             "display": format_tzs(portfolio_now),
             "mom_pct": _pct_change(portfolio_now, portfolio_prev),
@@ -192,7 +192,7 @@ def build_kpi_ribbon(data: dict[str, pd.DataFrame]) -> list[dict[str, Any]]:
         {
             "key": "npl_ratio",
             "label": "NPL Ratio",
-            "icon": "⚠",
+            "icon": "warning",
             "value": credit_now["at_risk_rate"],
             "display": f"{credit_now['at_risk_rate']:.1f}%",
             "mom_pct": credit_now["at_risk_rate"] - credit_prev["at_risk_rate"],
@@ -205,7 +205,7 @@ def build_kpi_ribbon(data: dict[str, pd.DataFrame]) -> list[dict[str, Any]]:
         {
             "key": "digital_share",
             "label": "Digital Adoption",
-            "icon": "📱",
+            "icon": "smartphone",
             "value": digital_now,
             "display": f"{digital_now:.1f}%",
             "mom_pct": digital_now - digital_prev,
@@ -216,7 +216,7 @@ def build_kpi_ribbon(data: dict[str, pd.DataFrame]) -> list[dict[str, Any]]:
         {
             "key": "avg_balance",
             "label": "Avg Customer Balance",
-            "icon": "💼",
+            "icon": "savings",
             "value": avg_bal_now,
             "display": format_tzs(avg_bal_now),
             "mom_pct": _pct_change(avg_bal_now, avg_bal_prev),
@@ -675,6 +675,7 @@ def build_business_alerts(data: dict[str, pd.DataFrame], ribbon: list[dict[str, 
     return [
         {
             "area": "Credit Risk",
+            "icon": "gpp_maybe",
             "severity": credit_severity,
             "tone": credit_tone,
             "headline": f"NPL ratio at {npl['value']:.1f}% (board threshold ≤ {TARGET_NPL_RATIO:.0f}%).",
@@ -682,6 +683,7 @@ def build_business_alerts(data: dict[str, pd.DataFrame], ribbon: list[dict[str, 
         },
         {
             "area": "Digital Growth",
+            "icon": "smartphone",
             "severity": digital_severity,
             "tone": digital_tone,
             "headline": f"Digital banking adoption reached {digital['value']:.0f}%.",
@@ -689,6 +691,7 @@ def build_business_alerts(data: dict[str, pd.DataFrame], ribbon: list[dict[str, 
         },
         {
             "area": "Customer Growth",
+            "icon": "group",
             "severity": growth_severity,
             "tone": growth_tone,
             "headline": f"Active customers changed {growth_pct:+.1f}% vs previous period.",

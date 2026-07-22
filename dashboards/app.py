@@ -35,7 +35,47 @@ st.set_page_config(
 
 CSS = """
 <style>
+    @import url("https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,500,0,0&display=swap");
+
     .block-container { padding-top: 1rem; max-width: 1220px; }
+
+    .material-symbols-outlined {
+        font-family: "Material Symbols Outlined";
+        font-weight: normal;
+        font-style: normal;
+        font-size: 1.15rem;
+        line-height: 1;
+        letter-spacing: normal;
+        text-transform: none;
+        display: inline-block;
+        white-space: nowrap;
+        word-wrap: normal;
+        direction: ltr;
+        -webkit-font-feature-settings: "liga";
+        font-feature-settings: "liga";
+        -webkit-font-smoothing: antialiased;
+        font-variation-settings: "FILL" 0, "wght" 500, "GRAD" 0, "opsz" 24;
+        vertical-align: middle;
+        color: #1f4e79;
+    }
+    .kpi-icon-label {
+        display: flex;
+        align-items: center;
+        gap: 0.35rem;
+        font-size: 0.82rem;
+        font-weight: 600;
+        color: inherit;
+        margin: 0 0 0.15rem 0;
+        opacity: 0.92;
+    }
+    .alert-card .material-symbols-outlined {
+        font-size: 1.05rem;
+        margin-right: 0.2rem;
+    }
+    .alert-card.critical .material-symbols-outlined { color: #c62828; }
+    .alert-card.positive .material-symbols-outlined { color: #2e7d32; }
+    .alert-card.watch .material-symbols-outlined { color: #f57f17; }
+
 
     /* ---------- Sidebar shell ---------- */
     section[data-testid="stSidebar"] {
@@ -319,7 +359,7 @@ def render_period_banner(data: dict) -> None:
 
 
 def render_kpi_ribbon(ribbon: list[dict]) -> None:
-    """CEO KPI ribbon with compact cards, MoM context, and status badges."""
+    """CEO KPI ribbon with Material icons, MoM context, and status badges."""
     for start in (0, 4):
         cols = st.columns(4)
         for col, item in zip(cols, ribbon[start : start + 4]):
@@ -327,13 +367,20 @@ def render_kpi_ribbon(ribbon: list[dict]) -> None:
             delta_color = "normal"
             if item["key"] == "npl_ratio" and item["mom_pct"] > 0:
                 delta_color = "inverse"
+            icon = item.get("icon", "analytics")
             with col:
+                st.markdown(
+                    f'<div class="kpi-icon-label"><span class="material-symbols-outlined">{icon}</span>'
+                    f'{item["label"]}</div>',
+                    unsafe_allow_html=True,
+                )
                 st.metric(
-                    f"{item.get('icon', '')} {item['label']}".strip(),
-                    item["display"],
+                    label=item["label"],
+                    value=item["display"],
                     delta=mom,
                     delta_color=delta_color,
                     help=item.get("help"),
+                    label_visibility="collapsed",
                 )
                 st.markdown(
                     f'<span class="badge {status_badge_class(item["status"])}">Status: {item["status"]}</span>',
@@ -363,11 +410,14 @@ def render_npl_callout(ribbon: list[dict]) -> None:
 def render_business_alerts(alerts: list[dict]) -> None:
     cols = st.columns(len(alerts))
     for col, alert in zip(cols, alerts):
+        icon = alert.get("icon", "notifications")
         with col:
             st.markdown(
                 f"""
                 <div class="alert-card {alert['severity']}">
-                    <div class="alert-area">{alert['area']}</div>
+                    <div class="alert-area">
+                        <span class="material-symbols-outlined">{icon}</span>{alert['area']}
+                    </div>
                     <div class="alert-tone">{alert['tone']}</div>
                     <div>{alert['headline']}</div>
                     <div class="alert-rec"><strong>Recommendation:</strong> {alert['recommendation']}</div>
