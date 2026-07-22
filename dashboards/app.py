@@ -70,24 +70,33 @@ CSS = """
         margin-bottom: 0.35rem;
         color: inherit;
         min-height: 7.5rem;
-    }
-    .kpi-card-head {
         display: flex;
-        align-items: center;
+        align-items: flex-start;
         justify-content: space-between;
-        gap: 0.5rem;
-        margin-bottom: 0.45rem;
+        gap: 0.65rem;
+    }
+    .kpi-card-main {
+        flex: 1;
+        min-width: 0;
+    }
+    .kpi-card-aside {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 0.35rem;
+        flex-shrink: 0;
+        padding-top: 0.05rem;
     }
     .kpi-card-title {
         font-size: 0.82rem;
         font-weight: 600;
         line-height: 1.25;
         opacity: 0.92;
+        margin-bottom: 0.4rem;
     }
-    .kpi-card-head .material-symbols-outlined {
-        font-size: 1.35rem;
+    .kpi-card-aside .material-symbols-outlined {
+        font-size: 1.45rem;
         color: #1f4e79;
-        flex-shrink: 0;
     }
     .kpi-card-value {
         font-size: 1.35rem;
@@ -98,13 +107,20 @@ CSS = """
     .kpi-card-delta {
         font-size: 0.78rem;
         font-weight: 600;
-        margin-bottom: 0.35rem;
     }
     .kpi-card-delta.up { color: #2e7d32; }
     .kpi-card-delta.down { color: #c62828; }
     .kpi-card-delta.down.inverse { color: #2e7d32; }
     .kpi-card-delta.up.inverse { color: #c62828; }
-    .kpi-card .badge { margin-top: 0; }
+    .kpi-card-aside .badge {
+        margin-top: 0;
+        text-align: center;
+        white-space: normal;
+        max-width: 5.5rem;
+        line-height: 1.2;
+        font-size: 0.68rem;
+        padding: 0.2rem 0.4rem;
+    }
     .alert-card .material-symbols-outlined {
         font-size: 1.05rem;
         margin-right: 0.2rem;
@@ -396,7 +412,7 @@ def render_period_banner(data: dict) -> None:
 
 
 def render_kpi_ribbon(ribbon: list[dict]) -> None:
-    """CEO KPI ribbon: title left, Material icon right, value and status inside card."""
+    """CEO KPI ribbon: title/value left; icon with status beneath on the right."""
     for start in (0, 4):
         cols = st.columns(4)
         for col, item in zip(cols, ribbon[start : start + 4]):
@@ -411,13 +427,15 @@ def render_kpi_ribbon(ribbon: list[dict]) -> None:
                 st.markdown(
                     f"""
                     <div class="kpi-card" title="{help_attr}">
-                        <div class="kpi-card-head">
+                        <div class="kpi-card-main">
                             <div class="kpi-card-title">{html.escape(item["label"])}</div>
-                            <span class="material-symbols-outlined">{html.escape(icon)}</span>
+                            <div class="kpi-card-value">{html.escape(str(item["display"]))}</div>
+                            <div class="kpi-card-delta {direction}{inverse}">{html.escape(mom)}</div>
                         </div>
-                        <div class="kpi-card-value">{html.escape(str(item["display"]))}</div>
-                        <div class="kpi-card-delta {direction}{inverse}">{html.escape(mom)}</div>
-                        <span class="badge {status_badge_class(item["status"])}">Status: {html.escape(item["status"])}</span>
+                        <div class="kpi-card-aside">
+                            <span class="material-symbols-outlined">{html.escape(icon)}</span>
+                            <span class="badge {status_badge_class(item["status"])}">{html.escape(item["status"])}</span>
+                        </div>
                     </div>
                     """,
                     unsafe_allow_html=True,
