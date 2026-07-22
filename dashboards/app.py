@@ -28,7 +28,7 @@ bi = importlib.reload(bi)
 
 st.set_page_config(
     page_title="Banking Executive BI Platform",
-    page_icon="🏦",
+    page_icon=str(PROJECT_ROOT / "dashboards" / "assets" / "bank_icon.svg"),
     layout="wide",
     initial_sidebar_state="expanded",
 )
@@ -106,7 +106,30 @@ CSS = """
         opacity: 0.92;
     }
 
-    /* Navigation radio → button-style items */
+    /* Navigation buttons styled as sidebar nav items */
+    section[data-testid="stSidebar"] div[data-testid="stButton"] > button {
+        background: rgba(128, 128, 128, 0.08);
+        border: 1px solid rgba(128, 128, 128, 0.22);
+        border-radius: 10px;
+        padding: 0.65rem 0.85rem;
+        justify-content: flex-start;
+        text-align: left;
+        font-weight: 500;
+        transition: background 0.15s ease, border-color 0.15s ease, transform 0.15s ease;
+    }
+    section[data-testid="stSidebar"] div[data-testid="stButton"] > button:hover {
+        background: rgba(46, 117, 182, 0.14);
+        border-color: rgba(46, 117, 182, 0.45);
+        transform: translateX(2px);
+    }
+    section[data-testid="stSidebar"] div[data-testid="stButton"] > button[kind="primary"] {
+        background: rgba(31, 78, 121, 0.22);
+        border-color: #2e75b6;
+        box-shadow: inset 3px 0 0 #1f4e79;
+        font-weight: 600;
+    }
+
+    /* Legacy radio styles kept as fallback */
     section[data-testid="stSidebar"] div[role="radiogroup"] {
         gap: 0.45rem;
         display: flex;
@@ -136,8 +159,6 @@ CSS = """
         font-size: 0.92rem !important;
         font-weight: 500;
     }
-
-    /* Hide default radio "Navigate" label clutter if present */
     section[data-testid="stSidebar"] .stRadio > label {
         display: none;
     }
@@ -557,12 +578,40 @@ def page_credit(data: dict) -> None:
     render_management_actions(bi.build_management_actions(data))
 
 
-def main() -> None:
+NAV_PAGES = [
+    {
+        "key": "executive",
+        "label": "Executive Overview",
+        "icon": ":material/monitoring:",
+    },
+    {
+        "key": "customers",
+        "label": "Customer Analytics",
+        "icon": ":material/groups:",
+    },
+    {
+        "key": "transactions",
+        "label": "Transaction Analytics",
+        "icon": ":material/payments:",
+    },
+    {
+        "key": "loans",
+        "label": "Loan Portfolio Analytics",
+        "icon": ":material/account_balance:",
+    },
+]
+
+
+def render_sidebar_nav() -> str:
+    """Render Material-icon sidebar navigation and return the selected page key."""
+    if "nav_page" not in st.session_state:
+        st.session_state.nav_page = "executive"
+
     st.sidebar.markdown(
         """
         <div class="sidebar-brand">
             <div class="brand-kicker">Tanzania Banking Intelligence</div>
-            <p class="brand-title">🏦 Executive BI Platform</p>
+            <p class="brand-title">Executive BI Platform</p>
             <div class="brand-sub">Decision support for CEO · CFO · COO · Retail · Risk</div>
         </div>
         """,
@@ -570,16 +619,19 @@ def main() -> None:
     )
 
     st.sidebar.markdown('<div class="sidebar-section-label">Navigation</div>', unsafe_allow_html=True)
-    page = st.sidebar.radio(
-        "Navigate",
-        [
-            "📊  Executive Overview",
-            "👥  Customer Analytics",
-            "💳  Transaction Analytics",
-            "🏦  Loan Portfolio Analytics",
-        ],
-        label_visibility="collapsed",
-    )
+
+    for item in NAV_PAGES:
+        is_active = st.session_state.nav_page == item["key"]
+        clicked = st.sidebar.button(
+            item["label"],
+            key=f"nav_{item['key']}",
+            icon=item["icon"],
+            type="primary" if is_active else "secondary",
+            use_container_width=True,
+        )
+        if clicked:
+            st.session_state.nav_page = item["key"]
+            st.rerun()
 
     st.sidebar.markdown('<div class="sidebar-section-label">Quick guide</div>', unsafe_allow_html=True)
     st.sidebar.markdown(
@@ -595,11 +647,16 @@ def main() -> None:
         """
         <div class="sidebar-card">
             <strong>Theme</strong>
-            <p>Switch Light / Dark via the app menu (⋮ or ☰) → Settings → Theme.</p>
+            <p>Switch Light / Dark via the app menu → Settings → Theme.</p>
         </div>
         """,
         unsafe_allow_html=True,
     )
+    return st.session_state.nav_page
+
+
+def main() -> None:
+    page = render_sidebar_nav()
 
     try:
         data = get_datasets()
@@ -610,11 +667,11 @@ def main() -> None:
         st.error(f"Unable to load dashboard data: {exc}")
         st.stop()
 
-    if "Executive Overview" in page:
+    if page == "executive":
         page_executive_overview(data)
-    elif "Customer Analytics" in page:
+    elif page == "customers":
         page_customers(data)
-    elif "Transaction Analytics" in page:
+    elif page == "transactions":
         page_payments(data)
     else:
         page_credit(data)
