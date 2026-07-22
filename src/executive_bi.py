@@ -19,6 +19,7 @@ from src.dashboard_utils import (
     apply_chart_theme,
     calculate_credit_health,
     enrich_customer_value,
+    format_count,
     format_tzs,
     kpi_status,
     _monthly_growth_rate,
@@ -127,12 +128,16 @@ def build_kpi_ribbon(data: dict[str, pd.DataFrame]) -> list[dict[str, Any]]:
     avg_bal_now = deposits_now / len(customers_now) if len(customers_now) else 0.0
     avg_bal_prev = deposits_prev / len(customers_prev) if len(customers_prev) else 0.0
 
+    txn_total = len(transactions)
+    monthly_txn_mom = _pct_change(len(txn_now), len(txn_prev))
+
     ribbon = [
         {
             "key": "total_customers",
-            "label": "Total Customers",
+            "label": "Customers",
+            "icon": "👥",
             "value": float(len(customers_now)),
-            "display": f"{len(customers_now):,}",
+            "display": format_count(len(customers_now)),
             "mom_pct": _pct_change(len(customers_now), len(customers_prev)),
             "status": _status_for_kpi("total_customers", len(customers_now)),
             "help": "Customers onboarded on or before the latest month-end.",
@@ -140,15 +145,17 @@ def build_kpi_ribbon(data: dict[str, pd.DataFrame]) -> list[dict[str, Any]]:
         {
             "key": "active_customers",
             "label": "Active Customers",
+            "icon": "✅",
             "value": float(len(active_ids_now)),
-            "display": f"{len(active_ids_now):,}",
+            "display": format_count(len(active_ids_now)),
             "mom_pct": _pct_change(len(active_ids_now), len(active_ids_prev)),
             "status": _status_for_kpi("active_customers", len(active_ids_now)),
             "help": "Customers with at least one transaction in the latest month.",
         },
         {
             "key": "total_deposits",
-            "label": "Total Deposits",
+            "label": "Deposits",
+            "icon": "💰",
             "value": deposits_now,
             "display": format_tzs(deposits_now),
             "mom_pct": _pct_change(deposits_now, deposits_prev),
@@ -157,16 +164,22 @@ def build_kpi_ribbon(data: dict[str, pd.DataFrame]) -> list[dict[str, Any]]:
         },
         {
             "key": "total_transactions",
-            "label": "Total Transactions",
-            "value": float(len(txn_now)),
-            "display": f"{len(txn_now):,}",
-            "mom_pct": _pct_change(len(txn_now), len(txn_prev)),
-            "status": _status_for_kpi("total_transactions", len(txn_now)),
-            "help": "Transactions in the latest month.",
+            "label": "Transactions",
+            "icon": "💳",
+            "value": float(txn_total),
+            "display": format_count(txn_total),
+            "mom_pct": monthly_txn_mom,
+            "status": _status_for_kpi("total_transactions", txn_total),
+            "help": (
+                f"All transactions in the reporting period. "
+                f"Latest month: {format_count(len(txn_now))} "
+                f"(MoM change shown vs previous month)."
+            ),
         },
         {
             "key": "loan_portfolio",
             "label": "Loan Portfolio",
+            "icon": "🏦",
             "value": portfolio_now,
             "display": format_tzs(portfolio_now),
             "mom_pct": _pct_change(portfolio_now, portfolio_prev),
@@ -176,16 +189,20 @@ def build_kpi_ribbon(data: dict[str, pd.DataFrame]) -> list[dict[str, Any]]:
         {
             "key": "npl_ratio",
             "label": "NPL Ratio",
+            "icon": "⚠",
             "value": credit_now["at_risk_rate"],
             "display": f"{credit_now['at_risk_rate']:.1f}%",
             "mom_pct": credit_now["at_risk_rate"] - credit_prev["at_risk_rate"],
             "mom_is_pp": True,
             "status": _status_for_kpi("npl_ratio", credit_now["at_risk_rate"]),
             "help": "Late + Default loans as a share of the loan book (NPL monitoring ratio).",
+            "threshold": TARGET_NPL_RATIO,
+            "action": "Strengthen credit monitoring and collection strategies.",
         },
         {
             "key": "digital_share",
-            "label": "Digital Banking Adoption",
+            "label": "Digital Adoption",
+            "icon": "📱",
             "value": digital_now,
             "display": f"{digital_now:.1f}%",
             "mom_pct": digital_now - digital_prev,
@@ -195,7 +212,8 @@ def build_kpi_ribbon(data: dict[str, pd.DataFrame]) -> list[dict[str, Any]]:
         },
         {
             "key": "avg_balance",
-            "label": "Average Customer Balance",
+            "label": "Avg Customer Balance",
+            "icon": "💼",
             "value": avg_bal_now,
             "display": format_tzs(avg_bal_now),
             "mom_pct": _pct_change(avg_bal_now, avg_bal_prev),
@@ -613,3 +631,157 @@ def create_default_by_region_chart(loans_customers: pd.DataFrame) -> go.Figure:
     fig.add_hline(y=3.0, line_dash="dash", line_color="#c62828", annotation_text="Soft default target 3%")
     fig = apply_chart_theme(fig, subtitle="Higher bars indicate regions needing closer credit monitoring.")
     return annotate_bar_extremes(fig, regional, "region", "default_rate")
+
+
+def build_business_alerts(data: dict[str, pd.DataFrame], ribbon: list[dict[str, Any]]) -> list[dict[str, str]]:
+    """
+    Build critical business alert cards for the CEO overview.
+
+    Each alert carries severity, headline metric, and a management recommendation.
+    """
+    digital = next(item for item in ribbon if item["key"] == "digital_share")
+    npl = next(item for item in ribbon if item["key"] == "npl_ratio")
+    active = next(item for item in ribbon if item["key"] == "active_customers")
+    customers = next(item for item in ribbon if item["key"] == "total_customers")
+
+    credit_severity = "critical" if npl["value"] > TARGET_NPL_RATIO else "positive"
+    credit_tone = "Attention Required" if credit_severity == "critical" else "Within Threshold"
+    credit_rec = (
+        "Review high-risk borrower segments and strengthen collections."
+        if credit_severity == "critical"
+        else "Maintain current credit monitoring cadence."
+    )
+
+    digital_severity = "positive" if digital["value"] >= TARGET_DIGITAL_ADOPTION else "watch"
+    digital_tone = "Positive Trend" if digital_severity == "positive" else "Watch"
+    digital_rec = (
+        "Expand digital campaigns and protect mobile/USSD capacity."
+        if digital_severity == "positive"
+        else "Accelerate digital onboarding and channel migration."
+    )
+
+    growth_pct = active["mom_pct"] if active["mom_pct"] != 0 else customers["mom_pct"]
+    growth_severity = "positive" if growth_pct >= 0 else "watch"
+    growth_tone = "Healthy" if growth_severity == "positive" else "Softening"
+    growth_rec = (
+        "Continue retention and relationship-banking initiatives."
+        if growth_severity == "positive"
+        else "Investigate attrition drivers and launch win-back campaigns."
+    )
+
+    return [
+        {
+            "area": "Credit Risk",
+            "severity": credit_severity,
+            "tone": credit_tone,
+            "headline": f"NPL ratio at {npl['value']:.1f}% (board threshold ≤ {TARGET_NPL_RATIO:.0f}%).",
+            "recommendation": credit_rec,
+        },
+        {
+            "area": "Digital Growth",
+            "severity": digital_severity,
+            "tone": digital_tone,
+            "headline": f"Digital banking adoption reached {digital['value']:.0f}%.",
+            "recommendation": digital_rec,
+        },
+        {
+            "area": "Customer Growth",
+            "severity": growth_severity,
+            "tone": growth_tone,
+            "headline": f"Active customers changed {growth_pct:+.1f}% vs previous period.",
+            "recommendation": growth_rec,
+        },
+    ]
+
+
+def create_monthly_performance_trend(data: dict[str, pd.DataFrame]) -> go.Figure:
+    """
+    Monthly business growth trend for deposits, transaction value, and loan portfolio.
+
+    Stock metrics (deposits, loans) are approximated as cumulative book size by month-end.
+    """
+    accounts = data["accounts"].copy()
+    loans = data["loans"].copy()
+    transactions = data["transactions"].copy()
+
+    months = (
+        pd.period_range(
+            start=transactions["transaction_date"].min().to_period("M"),
+            end=transactions["transaction_date"].max().to_period("M"),
+            freq="M",
+        )
+        .to_timestamp(how="end")
+        .normalize()
+    )
+
+    txn_monthly = (
+        transactions.assign(month=transactions["transaction_date"].dt.to_period("M"))
+        .groupby("month", as_index=False)
+        .agg(transaction_value=("amount", "sum"))
+    )
+    txn_monthly["month_end"] = txn_monthly["month"].dt.to_timestamp(how="end").dt.normalize()
+
+    deposit_rows = []
+    loan_rows = []
+    for month_end in months:
+        deposit_rows.append(
+            {
+                "month_end": month_end,
+                "deposits": float(accounts.loc[accounts["opening_date"] <= month_end, "balance"].sum()),
+            }
+        )
+        loan_rows.append(
+            {
+                "month_end": month_end,
+                "loan_portfolio": float(loans.loc[loans["loan_date"] <= month_end, "loan_amount"].sum()),
+            }
+        )
+
+    trend = (
+        pd.DataFrame({"month_end": months})
+        .merge(pd.DataFrame(deposit_rows), on="month_end", how="left")
+        .merge(pd.DataFrame(loan_rows), on="month_end", how="left")
+        .merge(txn_monthly[["month_end", "transaction_value"]], on="month_end", how="left")
+        .fillna(0.0)
+        .sort_values("month_end")
+    )
+    trend["period"] = trend["month_end"].dt.strftime("%b %Y")
+
+    fig = go.Figure()
+    fig.add_trace(
+        go.Scatter(
+            x=trend["period"],
+            y=trend["deposits"],
+            name="Deposits",
+            mode="lines+markers",
+            line=dict(color="#1f4e79", width=2.5),
+        )
+    )
+    fig.add_trace(
+        go.Scatter(
+            x=trend["period"],
+            y=trend["transaction_value"],
+            name="Transaction Value",
+            mode="lines+markers",
+            line=dict(color="#2e75b6", width=2.5),
+        )
+    )
+    fig.add_trace(
+        go.Scatter(
+            x=trend["period"],
+            y=trend["loan_portfolio"],
+            name="Loan Portfolio",
+            mode="lines+markers",
+            line=dict(color="#70ad47", width=2.5),
+        )
+    )
+    fig.update_layout(
+        title="Monthly Performance Trend",
+        yaxis_title="TZS",
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, x=0),
+        hovermode="x unified",
+    )
+    return apply_chart_theme(
+        fig,
+        subtitle="Deposits and loans shown as cumulative book size; transaction value is monthly flow.",
+    )

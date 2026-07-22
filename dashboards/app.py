@@ -168,16 +168,28 @@ CSS = """
         background: rgba(128, 128, 128, 0.08);
         border: 1px solid rgba(128, 128, 128, 0.25);
         border-radius: 10px;
-        padding: 0.75rem 0.9rem;
+        padding: 0.55rem 0.75rem 0.65rem;
+        margin-bottom: 0.15rem;
+    }
+    div[data-testid="stMetric"] label {
+        font-size: 0.82rem !important;
+    }
+    div[data-testid="stMetric"] [data-testid="stMetricValue"] {
+        font-size: 1.35rem !important;
+        line-height: 1.2 !important;
+    }
+    div[data-testid="stMetric"] [data-testid="stMetricDelta"] {
+        font-size: 0.78rem !important;
     }
 
-    .period-banner, .exec-summary, .insight-box, .action-box {
+    .period-banner, .exec-summary, .insight-box, .action-box, .alert-card, .npl-callout, .app-footer {
         border-radius: 10px; padding: 0.9rem 1.1rem; margin-bottom: 0.85rem;
     }
     .period-banner {
         background: rgba(128, 128, 128, 0.12);
         border: 1px solid rgba(128, 128, 128, 0.25);
         color: inherit;
+        line-height: 1.55;
     }
     .exec-summary {
         background: linear-gradient(90deg, #1f4e79, #2e75b6);
@@ -200,7 +212,7 @@ CSS = """
     .action-box.rec { border-left-color: #c62828; }
     .badge {
         display: inline-block; padding: 0.15rem 0.55rem; border-radius: 999px;
-        font-size: 0.75rem; font-weight: 700; margin-top: 0.35rem;
+        font-size: 0.75rem; font-weight: 700; margin-top: 0.25rem;
     }
     .badge-healthy { background: #e8f5e9; color: #1b5e20; }
     .badge-watch { background: #fff8e1; color: #f57f17; }
@@ -215,6 +227,38 @@ CSS = """
         text-align: center;
         color: inherit;
     }
+    .npl-callout {
+        background: #ffebee;
+        border: 1px solid #ef9a9a;
+        color: #b71c1c;
+        line-height: 1.5;
+    }
+    .alert-card {
+        background: rgba(128, 128, 128, 0.08);
+        border: 1px solid rgba(128, 128, 128, 0.25);
+        border-left: 5px solid #64748b;
+        color: inherit;
+        min-height: 9.5rem;
+    }
+    .alert-card.critical { border-left-color: #c62828; }
+    .alert-card.positive { border-left-color: #2e7d32; }
+    .alert-card.watch { border-left-color: #f9a825; }
+    .alert-card .alert-area {
+        font-size: 0.78rem; font-weight: 700; letter-spacing: 0.04em;
+        text-transform: uppercase; color: #64748b; margin-bottom: 0.35rem;
+    }
+    .alert-card .alert-tone { font-weight: 700; margin-bottom: 0.35rem; }
+    .alert-card .alert-rec { margin-top: 0.55rem; font-size: 0.9rem; }
+    .app-footer {
+        background: rgba(128, 128, 128, 0.08);
+        border: 1px solid rgba(128, 128, 128, 0.22);
+        color: inherit;
+        text-align: center;
+        font-size: 0.85rem;
+        line-height: 1.55;
+        margin-top: 1.25rem;
+    }
+    .app-footer strong { display: block; margin-bottom: 0.25rem; }
 
     /* Sidebar filter section headers */
     section[data-testid="stSidebar"] h3 {
@@ -247,9 +291,10 @@ def status_badge_class(status: str) -> str:
 
 
 def format_mom(pct: float, is_pp: bool = False) -> str:
-    arrow = "▲" if pct >= 0 else "▼"
+    """Format MoM change for executives: ↑ 4.0% vs previous period."""
+    arrow = "↑" if pct >= 0 else "↓"
     unit = " pp" if is_pp else "%"
-    return f"{arrow} {abs(pct):.1f}{unit}"
+    return f"{arrow} {abs(pct):.1f}{unit} vs previous period"
 
 
 def render_period_banner(data: dict) -> None:
@@ -261,6 +306,7 @@ def render_period_banner(data: dict) -> None:
             &nbsp;·&nbsp; <strong>Currency:</strong> {meta['currency']}
             &nbsp;·&nbsp; <strong>Data layer:</strong> {meta['view_label']}
             &nbsp;·&nbsp; <strong>Customers:</strong> {meta['customer_count']}
+            <br/><strong>Last refresh:</strong> {meta['last_refresh']}
         </div>
         """,
         unsafe_allow_html=True,
@@ -268,20 +314,17 @@ def render_period_banner(data: dict) -> None:
 
 
 def render_kpi_ribbon(ribbon: list[dict]) -> None:
-    """CEO KPI ribbon with value, MoM, and status badge."""
-    # Two rows of 4 for readability on executive screens.
+    """CEO KPI ribbon with compact cards, MoM context, and status badges."""
     for start in (0, 4):
         cols = st.columns(4)
         for col, item in zip(cols, ribbon[start : start + 4]):
             mom = format_mom(item["mom_pct"], item.get("mom_is_pp", False))
-            # Streamlit delta: negative MoM for NPL is good visually if we invert?
-            # Keep raw signed change; badge carries judgment.
             delta_color = "normal"
-            if item["key"] in {"npl_ratio"} and item["mom_pct"] > 0:
+            if item["key"] == "npl_ratio" and item["mom_pct"] > 0:
                 delta_color = "inverse"
             with col:
                 st.metric(
-                    item["label"],
+                    f"{item.get('icon', '')} {item['label']}".strip(),
                     item["display"],
                     delta=mom,
                     delta_color=delta_color,
@@ -291,6 +334,55 @@ def render_kpi_ribbon(ribbon: list[dict]) -> None:
                     f'<span class="badge {status_badge_class(item["status"])}">Status: {item["status"]}</span>',
                     unsafe_allow_html=True,
                 )
+
+
+def render_npl_callout(ribbon: list[dict]) -> None:
+    """Surface NPL threshold breach with an explicit management action."""
+    npl = next((item for item in ribbon if item["key"] == "npl_ratio"), None)
+    if not npl:
+        return
+    threshold = npl.get("threshold", bi.TARGET_NPL_RATIO)
+    if npl["value"] <= threshold:
+        return
+    st.markdown(
+        f"""
+        <div class="npl-callout">
+            <strong>NPL Ratio {npl['display']}</strong> — above recommended threshold of {threshold:.0f}%.<br/>
+            <strong>Action:</strong> {npl.get('action', 'Strengthen credit monitoring and collection strategies.')}
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def render_business_alerts(alerts: list[dict]) -> None:
+    cols = st.columns(len(alerts))
+    for col, alert in zip(cols, alerts):
+        with col:
+            st.markdown(
+                f"""
+                <div class="alert-card {alert['severity']}">
+                    <div class="alert-area">{alert['area']}</div>
+                    <div class="alert-tone">{alert['tone']}</div>
+                    <div>{alert['headline']}</div>
+                    <div class="alert-rec"><strong>Recommendation:</strong> {alert['recommendation']}</div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+
+
+def render_app_footer() -> None:
+    st.markdown(
+        """
+        <div class="app-footer">
+            <strong>Tanzania Banking Intelligence Platform</strong>
+            Built with Python · Pandas · Streamlit · Plotly<br/>
+            Executive analytics for customer, payments, and credit portfolio monitoring
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
 
 def render_insight_block(finding: str, impact: str | None, recommendation: str) -> None:
@@ -365,9 +457,9 @@ def multiselect_all(label: str, options: list, key: str) -> list:
 def page_executive_overview(data: dict) -> None:
     ribbon = bi.build_kpi_ribbon(data)
     summary = bi.build_executive_summary_text(data, ribbon)
-    panel = bi.build_action_panel(data, ribbon)
-    scorecards = bi.build_scorecards(data, ribbon)
+    alerts = bi.build_business_alerts(data, ribbon)
     actions = bi.build_management_actions(data)
+    trend_fig = bi.create_monthly_performance_trend(data)
 
     st.title("Executive Overview")
     st.caption("CEO / Board decision dashboard — what happened, why it matters, what to do next.")
@@ -375,41 +467,19 @@ def page_executive_overview(data: dict) -> None:
 
     st.subheader("KPI Ribbon")
     render_kpi_ribbon(ribbon)
+    render_npl_callout(ribbon)
 
-    st.subheader("Executive Summary")
+    st.subheader("Business Health Summary")
     st.markdown(f'<div class="exec-summary">{summary}</div>', unsafe_allow_html=True)
 
-    st.subheader("Executive Action Panel")
-    render_action_panel(panel)
+    st.subheader("Monthly Performance Trend")
+    st.plotly_chart(trend_fig, use_container_width=True)
 
-    st.subheader("Executive Scorecards")
-    render_scorecards(scorecards)
+    st.subheader("Critical Business Alerts")
+    render_business_alerts(alerts)
 
-    st.divider()
-    st.subheader("Evidence charts")
-    col1, col2 = st.columns(2)
-    txn_insights = bi.build_transaction_insights(data["transactions"])
-    with col1:
-        st.plotly_chart(bi.create_channel_chart_with_target(data["transactions"]), use_container_width=True)
-        render_insight_block(
-            finding=txn_insights["channel"]["finding"],
-            impact=txn_insights["channel"]["impact"],
-            recommendation=txn_insights["channel"]["recommendation"],
-        )
-    with col2:
-        loans_customers = data["loans"].merge(
-            data["customers"][["customer_id", "region"]], on="customer_id", how="left"
-        )
-        st.plotly_chart(bi.create_repayment_chart_with_target(data["loans"]), use_container_width=True)
-        loan_insights = bi.build_loan_insights(data["loans"], loans_customers)
-        render_insight_block(
-            finding=loan_insights["repayment"]["finding"],
-            impact=loan_insights["repayment"]["impact"],
-            recommendation=loan_insights["repayment"]["recommendation"],
-        )
-
-    st.divider()
     render_management_actions(actions)
+    render_app_footer()
 
 
 def page_customers(data: dict) -> None:
@@ -633,7 +703,7 @@ def render_sidebar_nav() -> str:
         """
         <div class="sidebar-card">
             <strong>Decision lens</strong>
-            <p>1. What happened?<br/>2. Why does it matter?<br/>3. What should management do next?</p>
+            <p>1. KPI monitoring<br/>2. Business health summary<br/>3. Alerts &amp; recommended actions</p>
         </div>
         """,
         unsafe_allow_html=True,
@@ -670,6 +740,9 @@ def main() -> None:
         page_payments(data)
     else:
         page_credit(data)
+
+    if page != "executive":
+        render_app_footer()
 
 
 if __name__ == "__main__":

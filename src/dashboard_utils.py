@@ -63,6 +63,20 @@ def format_tzs(value: float, compact: bool = True) -> str:
     return f"TZS {value:,.0f}"
 
 
+def format_count(value: float, compact: bool = True) -> str:
+    """Format large counts for executive KPI cards (e.g. 1.42M, 58.4K)."""
+    if pd.isna(value):
+        return "0"
+    value = float(value)
+    if compact and abs(value) >= 1_000_000:
+        scaled = f"{value / 1_000_000:.2f}".rstrip("0").rstrip(".")
+        return f"{scaled}M"
+    if compact and abs(value) >= 10_000:
+        scaled = f"{value / 1_000:.1f}".rstrip("0").rstrip(".")
+        return f"{scaled}K"
+    return f"{value:,.0f}"
+
+
 def format_pct(value: float, decimals: int = 1) -> str:
     """Format percentage values for narrative text."""
     return f"{value:.{decimals}f}%"
@@ -390,6 +404,9 @@ def kpi_status(metric: str, value: float) -> tuple[str, str]:
 
 def reporting_period(data: dict[str, pd.DataFrame]) -> dict[str, Any]:
     """Build reporting-period metadata for the executive banner."""
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
     transactions = data["transactions"]
     loans = data["loans"]
     customers = data["customers"]
@@ -401,6 +418,7 @@ def reporting_period(data: dict[str, pd.DataFrame]) -> dict[str, Any]:
         "analytics": "Analytics mart",
         "processed": "Processed warehouse",
     }
+    now_eat = datetime.now(ZoneInfo("Africa/Dar_es_Salaam"))
 
     return {
         "period_label": f"{start.strftime('%b %Y')} – {end.strftime('%b %Y')}",
@@ -409,6 +427,7 @@ def reporting_period(data: dict[str, pd.DataFrame]) -> dict[str, Any]:
         "customer_count": f"{len(customers):,}",
         "loan_count": f"{len(loans):,}",
         "data_layer": data_dir.name,
+        "last_refresh": f"{now_eat.day} {now_eat.strftime('%B %Y %H:%M')} EAT",
     }
 
 
