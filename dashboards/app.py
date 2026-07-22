@@ -37,39 +37,61 @@ CSS = """
 <style>
     .block-container { padding-top: 1rem; max-width: 1220px; }
 
+    /* Metric cards: inherit theme colors so Light/Dark both stay readable */
     div[data-testid="stMetric"] {
-        background: linear-gradient(135deg, #f8fafc 0%, #eef2f7 100%);
-        border: 1px solid #cbd5e1;
+        background: rgba(128, 128, 128, 0.08);
+        border: 1px solid rgba(128, 128, 128, 0.25);
         border-radius: 10px;
         padding: 0.75rem 0.9rem;
     }
-    div[data-testid="stMetric"] label[data-testid="stMetricLabel"] p { color: #475569 !important; }
-    div[data-testid="stMetric"] [data-testid="stMetricValue"] * { color: #1f4e79 !important; }
 
     .period-banner, .exec-summary, .insight-box, .action-box {
         border-radius: 10px; padding: 0.9rem 1.1rem; margin-bottom: 0.85rem;
     }
-    .period-banner { background:#f1f5f9; border:1px solid #cbd5e1; color:#334155; }
-    .exec-summary { background:linear-gradient(90deg,#1f4e79,#2e75b6); color:#f8fafc; line-height:1.55; }
-    .insight-box { background:#0f172a; border:1px solid #334155; color:#e2e8f0; }
-    .action-box { background:#ffffff; border:1px solid #cbd5e1; color:#1e293b; border-left:5px solid #1f4e79; }
-    .success-box { border-left-color:#2e7d32; }
-    .watch-box { border-left-color:#f9a825; }
-    .action-box.rec { border-left-color:#c62828; }
+    .period-banner {
+        background: rgba(128, 128, 128, 0.12);
+        border: 1px solid rgba(128, 128, 128, 0.25);
+        color: inherit;
+    }
+    .exec-summary {
+        background: linear-gradient(90deg, #1f4e79, #2e75b6);
+        color: #f8fafc;
+        line-height: 1.55;
+    }
+    .insight-box {
+        background: rgba(31, 78, 121, 0.14);
+        border: 1px solid rgba(31, 78, 121, 0.35);
+        color: inherit;
+    }
+    .action-box {
+        background: rgba(128, 128, 128, 0.08);
+        border: 1px solid rgba(128, 128, 128, 0.25);
+        color: inherit;
+        border-left: 5px solid #1f4e79;
+    }
+    .success-box { border-left-color: #2e7d32; }
+    .watch-box { border-left-color: #f9a825; }
+    .action-box.rec { border-left-color: #c62828; }
     .badge {
-        display:inline-block; padding:0.15rem 0.55rem; border-radius:999px;
-        font-size:0.75rem; font-weight:700; margin-top:0.35rem;
+        display: inline-block; padding: 0.15rem 0.55rem; border-radius: 999px;
+        font-size: 0.75rem; font-weight: 700; margin-top: 0.35rem;
     }
-    .badge-healthy { background:#e8f5e9; color:#1b5e20; }
-    .badge-watch { background:#fff8e1; color:#f57f17; }
-    .badge-attention { background:#ffebee; color:#b71c1c; }
-    .badge-excellent { background:#e3f2fd; color:#0d47a1; }
-    .badge-good { background:#e8f5e9; color:#2e7d32; }
+    .badge-healthy { background: #e8f5e9; color: #1b5e20; }
+    .badge-watch { background: #fff8e1; color: #f57f17; }
+    .badge-attention { background: #ffebee; color: #b71c1c; }
+    .badge-excellent { background: #e3f2fd; color: #0d47a1; }
+    .badge-good { background: #e8f5e9; color: #2e7d32; }
     .score-card {
-        background:#ffffff; border:1px solid #cbd5e1; border-radius:10px;
-        padding:0.8rem; text-align:center; color:#1e293b;
+        background: rgba(128, 128, 128, 0.08);
+        border: 1px solid rgba(128, 128, 128, 0.25);
+        border-radius: 10px;
+        padding: 0.8rem;
+        text-align: center;
+        color: inherit;
     }
-    h1,h2,h3 { color:#1f4e79; }
+
+    /* Brand accent that remains readable in both themes */
+    h1, h2, h3 { color: #2e75b6; }
 </style>
 """
 st.markdown(CSS, unsafe_allow_html=True)
@@ -437,6 +459,10 @@ def main() -> None:
             "🏦 Loan Portfolio Analytics",
         ],
     )
+
+    st.sidebar.divider()
+    st.sidebar.markdown("**Theme**")
+    st.sidebar.caption("Switch Light / Dark: app menu (⋮ or ☰) → Settings → Theme")
 
     st.sidebar.divider()
     st.sidebar.markdown("**Decision lens**")

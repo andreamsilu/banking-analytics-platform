@@ -6,8 +6,6 @@ enableXsrfProtection = true
 [browser]
 gatherUsageStats = false
 
-[theme]
-primaryColor = "#1f4e79"
-backgroundColor = "#0e1117"
-secondaryBackgroundColor = "#262730"
-textColor = "#fafafa"
+# Theme is intentionally NOT locked here.
+# Users can switch Light / Dark from the app menu (⋮ → Settings → Theme).
+# Only brand accent is suggested via custom CSS that adapts to both themes.
