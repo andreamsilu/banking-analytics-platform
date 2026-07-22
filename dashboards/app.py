@@ -274,8 +274,9 @@ CSS = """
 st.markdown(CSS, unsafe_allow_html=True)
 
 
-@st.cache_data(show_spinner="Loading banking datasets...")
+@st.cache_data(show_spinner="Loading H1 2026 banking datasets...")
 def get_datasets():
+    """Load datasets sliced to the closed Jan–Jun 2026 reporting window."""
     return du.load_data()
 
 
@@ -303,6 +304,7 @@ def render_period_banner(data: dict) -> None:
         f"""
         <div class="period-banner">
             <strong>Reporting period:</strong> {meta['period_label']}
+            &nbsp;·&nbsp; <strong>Window:</strong> {meta['window_note']}
             &nbsp;·&nbsp; <strong>Currency:</strong> {meta['currency']}
             &nbsp;·&nbsp; <strong>Data layer:</strong> {meta['view_label']}
             &nbsp;·&nbsp; <strong>Customers:</strong> {meta['customer_count']}
@@ -462,7 +464,10 @@ def page_executive_overview(data: dict) -> None:
     trend_fig = bi.create_monthly_performance_trend(data)
 
     st.title("Executive Overview")
-    st.caption("CEO / Board decision dashboard — what happened, why it matters, what to do next.")
+    st.caption(
+        "CEO / Board decision dashboard for H1 2026 (1 Jan – 30 Jun) — "
+        "what happened, why it matters, what to do next."
+    )
     render_period_banner(data)
 
     st.subheader("KPI Ribbon")
@@ -677,7 +682,7 @@ def render_sidebar_nav() -> str:
         <div class="sidebar-brand">
             <div class="brand-kicker">Tanzania Banking Intelligence</div>
             <p class="brand-title">Executive BI Platform</p>
-            <div class="brand-sub">Decision support for CEO · CFO · COO · Retail · Risk</div>
+            <div class="brand-sub">H1 2026 · Decision support for CEO · CFO · COO · Retail · Risk</div>
         </div>
         """,
         unsafe_allow_html=True,

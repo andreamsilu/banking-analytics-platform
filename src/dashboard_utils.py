@@ -20,6 +20,11 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 PROCESSED_DIR = PROJECT_ROOT / "data" / "processed"
 ANALYTICS_DIR = PROJECT_ROOT / "data" / "analytics"
 
+# Closed management reporting window for the executive BI platform.
+REPORTING_PERIOD_START = pd.Timestamp("2026-01-01")
+REPORTING_PERIOD_END = pd.Timestamp("2026-06-30")
+REPORTING_PERIOD_LABEL = "Jan 2026 – Jun 2026"
+
 REQUIRED_FILES = {
     "customers": "customers_clean.csv",
     "accounts": "accounts_clean.csv",
@@ -237,14 +242,63 @@ def resolve_data_dir(preferred: Path | None = None) -> Path:
     return PROCESSED_DIR
 
 
+def apply_reporting_period(
+    datasets: dict[str, pd.DataFrame],
+    start: pd.Timestamp | None = None,
+    end: pd.Timestamp | None = None,
+) -> dict[str, pd.DataFrame]:
+    """
+    Restrict all dashboard datasets to a closed reporting window.
+
+    Rules for H1-style management reporting:
+    - Transactions: activity dated within [start, end]
+    - Accounts / loans: book position as of period end (opened/originated on or before end)
+    - Customers: on-book as of period end, limited to customers present in the filtered book
+    """
+    start = pd.Timestamp(start or REPORTING_PERIOD_START).normalize()
+    end = pd.Timestamp(end or REPORTING_PERIOD_END).normalize()
+
+    transactions = datasets["transactions"]
+    transactions = transactions[
+        (transactions["transaction_date"] >= start) & (transactions["transaction_date"] <= end)
+    ].copy()
+
+    accounts = datasets["accounts"]
+    accounts = accounts[accounts["opening_date"] <= end].copy()
+
+    loans = datasets["loans"]
+    loans = loans[loans["loan_date"] <= end].copy()
+
+    customers = datasets["customers"]
+    customers = customers[customers["customer_since"] <= end].copy()
+
+    related_ids = set(accounts["customer_id"]) | set(loans["customer_id"]) | set(transactions["customer_id"])
+    if related_ids:
+        customers = customers[customers["customer_id"].isin(related_ids)].copy()
+
+    sliced = {
+        "customers": customers,
+        "accounts": accounts,
+        "transactions": transactions,
+        "loans": loans,
+    }
+    empty = [name for name, df in sliced.items() if df.empty]
+    if empty:
+        raise DataLoadError(
+            f"No data available for reporting period {start.date()} to {end.date()} "
+            f"in: {', '.join(empty)}."
+        )
+    return sliced
+
+
 def load_data(data_dir: Path | None = None) -> dict[str, pd.DataFrame]:
     """
-    Load all cleaned banking datasets required by the dashboard.
+    Load cleaned banking datasets and slice them to the active reporting period.
 
     Raises
     ------
     DataLoadError
-        If any required file is missing or empty.
+        If any required file is missing or empty, or the reporting window has no rows.
     """
     data_dir = resolve_data_dir(data_dir)
     missing = [name for name, filename in REQUIRED_FILES.items() if not (data_dir / filename).exists()]
@@ -272,7 +326,7 @@ def load_data(data_dir: Path | None = None) -> dict[str, pd.DataFrame]:
             f"Dataset empty: {', '.join(empty)}. Please regenerate processed data before opening the dashboard."
         )
 
-    return datasets
+    return apply_reporting_period(datasets)
 
 
 def enrich_customer_value(customers: pd.DataFrame, accounts: pd.DataFrame) -> pd.DataFrame:
@@ -411,8 +465,8 @@ def reporting_period(data: dict[str, pd.DataFrame]) -> dict[str, Any]:
     loans = data["loans"]
     customers = data["customers"]
 
-    start = transactions["transaction_date"].min()
-    end = transactions["transaction_date"].max()
+    start = max(pd.Timestamp(transactions["transaction_date"].min()), REPORTING_PERIOD_START)
+    end = min(pd.Timestamp(transactions["transaction_date"].max()), REPORTING_PERIOD_END)
     data_dir = resolve_data_dir()
     layer_labels = {
         "analytics": "Analytics mart",
@@ -421,13 +475,16 @@ def reporting_period(data: dict[str, pd.DataFrame]) -> dict[str, Any]:
     now_eat = datetime.now(ZoneInfo("Africa/Dar_es_Salaam"))
 
     return {
-        "period_label": f"{start.strftime('%b %Y')} – {end.strftime('%b %Y')}",
+        "period_label": REPORTING_PERIOD_LABEL,
+        "period_start": start,
+        "period_end": end,
         "currency": "TZS",
         "view_label": layer_labels.get(data_dir.name, data_dir.name),
         "customer_count": f"{len(customers):,}",
         "loan_count": f"{len(loans):,}",
         "data_layer": data_dir.name,
         "last_refresh": f"{now_eat.day} {now_eat.strftime('%B %Y %H:%M')} EAT",
+        "window_note": "H1 2026 closed period (1 Jan – 30 Jun)",
     }
 
 
@@ -908,9 +965,14 @@ __all__ = [
     "filter_customers",
     "filter_loans",
     "filter_transactions",
+    "format_count",
     "format_tzs",
+    "apply_reporting_period",
     "kpi_status",
     "load_data",
     "reporting_period",
     "resolve_data_dir",
+    "REPORTING_PERIOD_START",
+    "REPORTING_PERIOD_END",
+    "REPORTING_PERIOD_LABEL",
 ]
