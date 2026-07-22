@@ -130,6 +130,47 @@ streamlit run dashboards/app.py
 
 Open the local URL shown in the terminal (typically `http://localhost:8501`).
 
+### Deploy on Streamlit Community Cloud
+
+Streamlit Cloud runs apps from a **public GitHub repository**.
+
+This project includes a cloud-safe sample dataset in `data/sample/` (~17 MB) because the full `transactions_clean.csv` exceeds GitHub’s 100 MB file limit. On Streamlit Cloud the dashboard automatically loads the sample data.
+
+#### 1. Push the project to GitHub
+
+```bash
+cd Banking-Analytics-Platform
+git init
+git add .
+git commit -m "Prepare Banking Analytics Platform for Streamlit Cloud"
+git branch -M main
+git remote add origin https://github.com/<YOUR_USERNAME>/Banking-Analytics-Platform.git
+git push -u origin main
+```
+
+#### 2. Deploy on Streamlit Cloud
+
+1. Open [https://share.streamlit.io](https://share.streamlit.io) (or [https://streamlit.io/cloud](https://streamlit.io/cloud))
+2. Sign in with GitHub
+3. Click **Create app** / **New app**
+4. Select your repository: `Banking-Analytics-Platform`
+5. Set:
+   - **Branch:** `main`
+   - **Main file path:** `dashboards/app.py`
+   - **Python version:** 3.12 (if available)
+6. Click **Deploy**
+
+#### 3. After deploy
+
+- App URL looks like: `https://<app-name>.streamlit.app`
+- Rebuilds automatically when you push to `main`
+- Local full datasets stay in `data/processed/` (gitignored); regenerate anytime with:
+
+```bash
+python src/data_generator.py
+python src/data_cleaning.py
+```
+
 ## License
 
 Portfolio project for educational and demonstration purposes.

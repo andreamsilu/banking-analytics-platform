@@ -1,0 +1,39 @@
+# Virtual environments
+venv/
+.venv/
+env/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+
+# Jupyter
+.ipynb_checkpoints/
+*/.ipynb_checkpoints/
+
+# Local full datasets (too large for GitHub / Streamlit Cloud)
+data/raw/
+data/processed/
+
+# Keep cloud-safe sample datasets
+!data/sample/
+!data/sample/**
+
+# Reports with large exports (optional local artifacts)
+reports/**/*.csv
+reports/**/charts/
+
+# IDE / OS
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# Streamlit / secrets
+.streamlit/secrets.toml
+
+# Logs
+*.log
