@@ -8,6 +8,7 @@ scorecards, and prioritized management actions.
 
 from __future__ import annotations
 
+import html
 import importlib
 import sys
 from pathlib import Path
@@ -59,15 +60,51 @@ CSS = """
         color: #1f4e79;
     }
     .kpi-icon-label {
+        display: none;
+    }
+    .kpi-card {
+        background: rgba(128, 128, 128, 0.08);
+        border: 1px solid rgba(128, 128, 128, 0.25);
+        border-radius: 10px;
+        padding: 0.75rem 0.85rem 0.7rem;
+        margin-bottom: 0.35rem;
+        color: inherit;
+        min-height: 7.5rem;
+    }
+    .kpi-card-head {
         display: flex;
         align-items: center;
-        gap: 0.35rem;
+        justify-content: space-between;
+        gap: 0.5rem;
+        margin-bottom: 0.45rem;
+    }
+    .kpi-card-title {
         font-size: 0.82rem;
         font-weight: 600;
-        color: inherit;
-        margin: 0 0 0.15rem 0;
+        line-height: 1.25;
         opacity: 0.92;
     }
+    .kpi-card-head .material-symbols-outlined {
+        font-size: 1.35rem;
+        color: #1f4e79;
+        flex-shrink: 0;
+    }
+    .kpi-card-value {
+        font-size: 1.35rem;
+        font-weight: 700;
+        line-height: 1.2;
+        margin-bottom: 0.2rem;
+    }
+    .kpi-card-delta {
+        font-size: 0.78rem;
+        font-weight: 600;
+        margin-bottom: 0.35rem;
+    }
+    .kpi-card-delta.up { color: #2e7d32; }
+    .kpi-card-delta.down { color: #c62828; }
+    .kpi-card-delta.down.inverse { color: #2e7d32; }
+    .kpi-card-delta.up.inverse { color: #c62828; }
+    .kpi-card .badge { margin-top: 0; }
     .alert-card .material-symbols-outlined {
         font-size: 1.05rem;
         margin-right: 0.2rem;
@@ -359,31 +396,30 @@ def render_period_banner(data: dict) -> None:
 
 
 def render_kpi_ribbon(ribbon: list[dict]) -> None:
-    """CEO KPI ribbon with Material icons, MoM context, and status badges."""
+    """CEO KPI ribbon: title left, Material icon right, value and status inside card."""
     for start in (0, 4):
         cols = st.columns(4)
         for col, item in zip(cols, ribbon[start : start + 4]):
             mom = format_mom(item["mom_pct"], item.get("mom_is_pp", False))
-            delta_color = "normal"
-            if item["key"] == "npl_ratio" and item["mom_pct"] > 0:
-                delta_color = "inverse"
             icon = item.get("icon", "analytics")
+            pct = float(item["mom_pct"])
+            direction = "up" if pct >= 0 else "down"
+            # Rising NPL is adverse — invert delta color for that KPI only.
+            inverse = " inverse" if item["key"] == "npl_ratio" else ""
+            help_attr = html.escape(item.get("help") or "", quote=True)
             with col:
                 st.markdown(
-                    f'<div class="kpi-icon-label"><span class="material-symbols-outlined">{icon}</span>'
-                    f'{item["label"]}</div>',
-                    unsafe_allow_html=True,
-                )
-                st.metric(
-                    label=item["label"],
-                    value=item["display"],
-                    delta=mom,
-                    delta_color=delta_color,
-                    help=item.get("help"),
-                    label_visibility="collapsed",
-                )
-                st.markdown(
-                    f'<span class="badge {status_badge_class(item["status"])}">Status: {item["status"]}</span>',
+                    f"""
+                    <div class="kpi-card" title="{help_attr}">
+                        <div class="kpi-card-head">
+                            <div class="kpi-card-title">{html.escape(item["label"])}</div>
+                            <span class="material-symbols-outlined">{html.escape(icon)}</span>
+                        </div>
+                        <div class="kpi-card-value">{html.escape(str(item["display"]))}</div>
+                        <div class="kpi-card-delta {direction}{inverse}">{html.escape(mom)}</div>
+                        <span class="badge {status_badge_class(item["status"])}">Status: {html.escape(item["status"])}</span>
+                    </div>
+                    """,
                     unsafe_allow_html=True,
                 )
 
