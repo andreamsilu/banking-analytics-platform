@@ -105,49 +105,6 @@ def _monthly_growth_rate(transactions: pd.DataFrame, value_col: str = "transacti
     return (latest - previous) / previous * 100
 
 
-def build_executive_story(data: dict[str, pd.DataFrame]) -> dict[str, Any]:
-    """Build headline narrative and talking points for the executive page."""
-    customers = data["customers"]
-    transactions = data["transactions"]
-    loans = data["loans"]
-    kpis = calculate_executive_kpis(data)
-
-    top_region, region_share = _top_share(customers["region"])
-    top_channel, channel_share = _top_share(transactions["channel"])
-    digital_share = transactions["channel"].isin(DIGITAL_CHANNELS).mean() * 100
-    on_time_share = (loans["repayment_status"] == "On Time").mean() * 100
-    premium_share = (customers["customer_type"] == "Premium").mean() * 100
-    top_loan_product = loans.groupby("loan_type")["loan_amount"].sum().idxmax()
-    tx_growth = _monthly_growth_rate(transactions)
-
-    headline = (
-        f"{top_channel} drives {channel_share:.0f}% of transactions while the loan book stands at "
-        f"{format_tzs(kpis['total_loan_portfolio'])} with an NPL rate of {kpis['npl_rate']:.1f}%."
-    )
-
-    return {
-        "headline": headline,
-        "kpis": kpis,
-        "bullets": [
-            f"Customer base: {kpis['total_customers']:,} clients, with {premium_share:.1f}% classified as Premium.",
-            f"Geography: {top_region} is the largest regional market ({region_share:.1f}% of customers).",
-            f"Digital adoption: {digital_share:.1f}% of transactions flow through mobile and online channels.",
-            f"Lending health: {on_time_share:.1f}% of loans are repaid on time; top product is {top_loan_product}.",
-            f"Recent momentum: transaction volume moved {tx_growth:+.1f}% month-on-month in the latest period.",
-        ],
-        "watchouts": [
-            f"NPL rate at {kpis['npl_rate']:.1f}% — monitor Late and Default segments closely.",
-            "Branch share remains a cost focus area as digital channels expand.",
-        ],
-        "top_channel": top_channel,
-        "channel_share": channel_share,
-        "digital_share": digital_share,
-        "top_region": top_region,
-        "on_time_share": on_time_share,
-        "tx_growth": tx_growth,
-    }
-
-
 def build_customer_story(customers: pd.DataFrame, customer_value: pd.DataFrame) -> dict[str, Any]:
     """Build customer-page narrative from filtered data."""
     top_region, region_share = _top_share(customers["region"])
@@ -221,11 +178,12 @@ def build_loan_story(loans: pd.DataFrame, loans_customers: pd.DataFrame) -> dict
             f"{on_time_share:.1f}% on-time repayment."
         ),
         "bullets": [
-            f"NPL rate (Late + Default): {kpis['npl_rate']:.1f}%.",
+            f"On-time repayment: {kpis['on_time_rate']:.1f}%.",
+            f"Watchlist (late): {kpis['watchlist_rate']:.1f}% · Defaults: {kpis['default_rate']:.1f}%.",
             f"High Risk exposure: {high_risk_share:.1f}% of loans in the current view.",
             f"{highest_risk_region} shows the highest default rate ({highest_risk_rate:.1f}%).",
         ],
-        "action": "Strengthen collections and underwriting in high-risk regions and loan sizes.",
+        "action": "Strengthen collections in high-default regions and tighten early-warning for late loans.",
     }
 
 
@@ -324,25 +282,224 @@ def enrich_customer_value(customers: pd.DataFrame, accounts: pd.DataFrame) -> pd
 
 
 def calculate_executive_kpis(data: dict[str, pd.DataFrame]) -> dict[str, Any]:
-    """Compute top-level KPIs for the executive overview page."""
+    """Compute top-level KPIs for the board overview page."""
     customers = data["customers"]
     accounts = data["accounts"]
     transactions = data["transactions"]
     loans = data["loans"]
 
-    non_performing = loans["repayment_status"].isin(["Late", "Default"]).sum()
-    npl_rate = non_performing / len(loans) * 100 if len(loans) else 0.0
+    credit = calculate_credit_health(loans)
+    digital_share = (
+        transactions["channel"].isin(DIGITAL_CHANNELS).mean() * 100 if len(transactions) else 0.0
+    )
 
     return {
         "total_customers": len(customers),
         "active_accounts": int((accounts["status"] == "Active").sum()),
         "premium_customers": int((customers["customer_type"] == "Premium").sum()),
+        "premium_share": float((customers["customer_type"] == "Premium").mean() * 100) if len(customers) else 0.0,
         "total_transactions": len(transactions),
-        "total_transaction_value": float(transactions["amount"].sum()),
-        "average_transaction_amount": float(transactions["amount"].mean()),
+        "total_transaction_value": float(transactions["amount"].sum()) if len(transactions) else 0.0,
+        "average_transaction_amount": float(transactions["amount"].mean()) if len(transactions) else 0.0,
         "total_loans": len(loans),
-        "total_loan_portfolio": float(loans["loan_amount"].sum()),
-        "npl_rate": float(npl_rate),
+        "total_loan_portfolio": float(loans["loan_amount"].sum()) if len(loans) else 0.0,
+        "digital_share": float(digital_share),
+        **credit,
+    }
+
+
+def calculate_credit_health(loans: pd.DataFrame) -> dict[str, float]:
+    """
+    Split repayment health into board-friendly credit metrics.
+
+    - On-time repayment: performing loans
+    - Watchlist (Late): early warning, not yet default
+    - Default rate: loans in Default status
+    - At-risk rate: Late + Default (watchlist + default combined)
+    """
+    total = len(loans)
+    if total == 0:
+        return {
+            "on_time_rate": 0.0,
+            "watchlist_rate": 0.0,
+            "default_rate": 0.0,
+            "at_risk_rate": 0.0,
+            "npl_rate": 0.0,
+        }
+
+    on_time = (loans["repayment_status"] == "On Time").sum()
+    late = (loans["repayment_status"] == "Late").sum()
+    defaulted = (loans["repayment_status"] == "Default").sum()
+    at_risk = late + defaulted
+
+    return {
+        "on_time_rate": float(on_time / total * 100),
+        "watchlist_rate": float(late / total * 100),
+        "default_rate": float(defaulted / total * 100),
+        "at_risk_rate": float(at_risk / total * 100),
+        # Keep legacy key for older call sites; maps to at-risk (Late + Default).
+        "npl_rate": float(at_risk / total * 100),
+    }
+
+
+def calculate_loan_kpis(loans: pd.DataFrame) -> dict[str, Any]:
+    """Compute loan-page KPIs from a filtered loan dataset."""
+    credit = calculate_credit_health(loans)
+    return {
+        "total_loans": len(loans),
+        "total_loan_amount": float(loans["loan_amount"].sum()) if len(loans) else 0.0,
+        "average_loan_size": float(loans["loan_amount"].mean()) if len(loans) else 0.0,
+        **credit,
+    }
+
+
+def kpi_status(metric: str, value: float) -> tuple[str, str]:
+    """
+    Return (status_label, delta_text) traffic-light guidance for board KPIs.
+
+    Thresholds are illustrative for a Tanzania retail banking demo.
+    """
+    rules = {
+        "digital_share": [(70, "On track"), (50, "Watch"), (0, "Needs attention")],
+        "on_time_rate": [(90, "On track"), (80, "Watch"), (0, "Needs attention")],
+        "default_rate": [(3, "On track"), (5, "Watch"), (100, "Needs attention")],
+        "watchlist_rate": [(8, "On track"), (12, "Watch"), (100, "Needs attention")],
+        "at_risk_rate": [(10, "On track"), (15, "Watch"), (100, "Needs attention")],
+    }
+    # For default/watchlist/at-risk, lower is better.
+    lower_is_better = metric in {"default_rate", "watchlist_rate", "at_risk_rate", "npl_rate"}
+
+    if metric not in rules:
+        return "Info", "Review"
+
+    bands = rules[metric]
+    if lower_is_better:
+        if value <= bands[0][0]:
+            return "On track", "Within target"
+        if value <= bands[1][0]:
+            return "Watch", "Above soft target"
+        return "Needs attention", "Above risk target"
+
+    # Higher is better
+    if value >= bands[0][0]:
+        return "On track", "Within target"
+    if value >= bands[1][0]:
+        return "Watch", "Below soft target"
+    return "Needs attention", "Below target"
+
+
+def reporting_period(data: dict[str, pd.DataFrame]) -> dict[str, str]:
+    """Build reporting-period metadata for the board banner."""
+    transactions = data["transactions"]
+    loans = data["loans"]
+    customers = data["customers"]
+
+    start = transactions["transaction_date"].min()
+    end = transactions["transaction_date"].max()
+    data_dir = resolve_data_dir()
+    is_sample = data_dir == SAMPLE_DIR or data_dir.name == "sample"
+
+    return {
+        "period_label": f"{start.strftime('%b %Y')} – {end.strftime('%b %Y')}",
+        "currency": "TZS",
+        "view_label": "Demo sample portfolio" if is_sample else "Full synthetic portfolio",
+        "customer_count": f"{len(customers):,}",
+        "loan_count": f"{len(loans):,}",
+        "is_sample": is_sample,
+    }
+
+
+def build_board_decisions(data: dict[str, pd.DataFrame]) -> list[dict[str, str]]:
+    """
+    Build three board-ready decisions: success, risk, and next action.
+    """
+    story = build_executive_story(data)
+    kpis = story["kpis"]
+    loans = data["loans"]
+    customers = data["customers"]
+    loans_customers = loans.merge(customers[["customer_id", "region"]], on="customer_id", how="left")
+
+    regional = (
+        loans_customers.groupby("region")
+        .agg(default_rate=("repayment_status", lambda s: (s == "Default").mean() * 100))
+        .sort_values("default_rate", ascending=False)
+    )
+    top_risk_region = regional.index[0] if not regional.empty else "N/A"
+    top_risk_rate = float(regional.iloc[0]["default_rate"]) if not regional.empty else 0.0
+
+    return [
+        {
+            "type": "Success",
+            "title": "Digital banking is the main channel",
+            "detail": (
+                f"{story['top_channel']} handles {story['channel_share']:.0f}% of transactions; "
+                f"digital channels overall are {kpis['digital_share']:.0f}%."
+            ),
+            "owner": "Retail / Digital",
+        },
+        {
+            "type": "Risk",
+            "title": "Credit watchlist needs management attention",
+            "detail": (
+                f"On-time repayment is {kpis['on_time_rate']:.1f}%. "
+                f"Defaults are {kpis['default_rate']:.1f}% and late (watchlist) loans are "
+                f"{kpis['watchlist_rate']:.1f}%. Highest default region: {top_risk_region} "
+                f"({top_risk_rate:.1f}%)."
+            ),
+            "owner": "Credit Risk",
+        },
+        {
+            "type": "Action",
+            "title": "Focus collections and digital capacity this month",
+            "detail": (
+                f"Deploy collections to {top_risk_region} and keep Mobile/USSD capacity strong "
+                f"as volume moved {story['tx_growth']:+.1f}% vs last month."
+            ),
+            "owner": "Credit + Operations",
+        },
+    ]
+
+
+def build_executive_story(data: dict[str, pd.DataFrame]) -> dict[str, Any]:
+    """Build headline narrative and talking points for the board overview."""
+    customers = data["customers"]
+    transactions = data["transactions"]
+    loans = data["loans"]
+    kpis = calculate_executive_kpis(data)
+
+    top_region, region_share = _top_share(customers["region"])
+    top_channel, channel_share = _top_share(transactions["channel"])
+    top_loan_product = loans.groupby("loan_type")["loan_amount"].sum().idxmax()
+    tx_growth = _monthly_growth_rate(transactions)
+
+    headline = (
+        f"Digital channels drive {kpis['digital_share']:.0f}% of payments. "
+        f"Loan book is {format_tzs(kpis['total_loan_portfolio'])} with "
+        f"{kpis['on_time_rate']:.1f}% on-time repayment and {kpis['default_rate']:.1f}% defaults."
+    )
+
+    return {
+        "headline": headline,
+        "kpis": kpis,
+        "bullets": [
+            f"Customer base: {kpis['total_customers']:,} clients; Premium share {kpis['premium_share']:.1f}%.",
+            f"Largest market: {top_region} ({region_share:.1f}% of customers).",
+            f"Payments: {top_channel} leads channels at {channel_share:.1f}% of transactions.",
+            f"Credit: on-time {kpis['on_time_rate']:.1f}% · watchlist (late) {kpis['watchlist_rate']:.1f}% · default {kpis['default_rate']:.1f}%.",
+            f"Top lending product by value: {top_loan_product}.",
+            f"Transaction volume changed {tx_growth:+.1f}% versus the previous month.",
+        ],
+        "watchouts": [
+            f"Default rate at {kpis['default_rate']:.1f}% — prioritize collections and early-warning on late loans.",
+            f"Watchlist (late) loans are {kpis['watchlist_rate']:.1f}% — treat as early credit risk, not yet default.",
+            "Keep branch capacity for high-value transactions while shifting routine payments to Mobile/USSD.",
+        ],
+        "top_channel": top_channel,
+        "channel_share": channel_share,
+        "digital_share": kpis["digital_share"],
+        "top_region": top_region,
+        "on_time_share": kpis["on_time_rate"],
+        "tx_growth": tx_growth,
     }
 
 
@@ -362,18 +519,6 @@ def calculate_transaction_kpis(transactions: pd.DataFrame) -> dict[str, Any]:
         "transaction_count": len(transactions),
         "transaction_value": float(transactions["amount"].sum()) if len(transactions) else 0.0,
         "average_transaction_amount": float(transactions["amount"].mean()) if len(transactions) else 0.0,
-    }
-
-
-def calculate_loan_kpis(loans: pd.DataFrame) -> dict[str, Any]:
-    """Compute loan-page KPIs from a filtered loan dataset."""
-    non_performing = loans["repayment_status"].isin(["Late", "Default"]).sum()
-    npl_rate = non_performing / len(loans) * 100 if len(loans) else 0.0
-    return {
-        "total_loans": len(loans),
-        "total_loan_amount": float(loans["loan_amount"].sum()) if len(loans) else 0.0,
-        "average_loan_size": float(loans["loan_amount"].mean()) if len(loans) else 0.0,
-        "npl_rate": float(npl_rate),
     }
 
 
@@ -720,10 +865,12 @@ def filter_loans(
 __all__ = [
     "DataLoadError",
     "apply_chart_theme",
+    "build_board_decisions",
     "build_customer_story",
     "build_executive_story",
     "build_loan_story",
     "build_transaction_story",
+    "calculate_credit_health",
     "calculate_customer_kpis",
     "calculate_executive_kpis",
     "calculate_loan_kpis",
@@ -740,6 +887,8 @@ __all__ = [
     "filter_loans",
     "filter_transactions",
     "format_tzs",
+    "kpi_status",
     "load_data",
+    "reporting_period",
     "resolve_data_dir",
 ]

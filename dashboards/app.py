@@ -1,8 +1,8 @@
 """
 Banking Analytics Intelligence Platform — Streamlit Dashboard.
 
-Presents customer, transaction, and loan analytics as a guided data story
-for banking executives and analysts.
+Board-ready views for bank owners: clear decisions, traffic-light KPIs,
+and plain-language credit and payments insights.
 """
 
 from __future__ import annotations
@@ -20,7 +20,6 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from src import dashboard_utils as du  # noqa: E402
 
-# Ensure utility updates are picked up without restarting Streamlit manually.
 du = importlib.reload(du)
 
 st.set_page_config(
@@ -32,7 +31,7 @@ st.set_page_config(
 
 BANKING_CSS = """
 <style>
-    .block-container { padding-top: 1.2rem; max-width: 1200px; }
+    .block-container { padding-top: 1.1rem; max-width: 1180px; }
 
     div[data-testid="stMetric"] {
         background: linear-gradient(135deg, #f8fafc 0%, #eef2f7 100%);
@@ -50,20 +49,40 @@ BANKING_CSS = """
     }
 
     .story-headline {
-        font-size: 1.15rem;
-        line-height: 1.6;
-        color: #e2e8f0;
+        font-size: 1.12rem;
+        line-height: 1.55;
+        color: #f8fafc;
         background: linear-gradient(90deg, #1f4e79 0%, #2e75b6 100%);
-        padding: 1rem 1.25rem;
+        padding: 1rem 1.2rem;
         border-radius: 10px;
-        margin-bottom: 1rem;
+        margin-bottom: 0.85rem;
     }
-    .story-section-label {
-        font-size: 0.8rem;
-        letter-spacing: 0.08em;
+    .period-banner {
+        background: #f1f5f9;
+        border: 1px solid #cbd5e1;
+        border-radius: 8px;
+        padding: 0.7rem 1rem;
+        color: #334155;
+        margin-bottom: 0.9rem;
+        font-size: 0.95rem;
+    }
+    .decision-card {
+        border-radius: 10px;
+        padding: 0.9rem 1rem;
+        border: 1px solid #cbd5e1;
+        background: #ffffff;
+        color: #1e293b;
+        min-height: 150px;
+    }
+    .decision-success { border-left: 5px solid #2e7d32; }
+    .decision-risk { border-left: 5px solid #c62828; }
+    .decision-action { border-left: 5px solid #1f4e79; }
+    .decision-type {
+        font-size: 0.75rem;
+        letter-spacing: 0.06em;
         text-transform: uppercase;
-        color: #64748b;
         font-weight: 700;
+        color: #64748b;
         margin-bottom: 0.25rem;
     }
     h1, h2, h3 { color: #1f4e79; }
@@ -78,123 +97,184 @@ def get_datasets():
     return du.load_data()
 
 
+def render_period_banner(data: dict) -> None:
+    """Show reporting period and portfolio view for bank owners."""
+    meta = du.reporting_period(data)
+    disclaimer = (
+        "Demo sample for portfolio presentation — not the full production book."
+        if meta["is_sample"]
+        else "Full synthetic portfolio for local analysis."
+    )
+    st.markdown(
+        f"""
+        <div class="period-banner">
+            <strong>Reporting period:</strong> {meta['period_label']}
+            &nbsp;·&nbsp; <strong>Currency:</strong> {meta['currency']}
+            &nbsp;·&nbsp; <strong>View:</strong> {meta['view_label']}
+            ({meta['customer_count']} customers)
+            <br/><span style="color:#64748b;">{disclaimer}</span>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
 def render_story_headline(text: str) -> None:
     """Display the page-level narrative hook."""
     st.markdown(f'<div class="story-headline">{text}</div>', unsafe_allow_html=True)
 
 
-def render_story_section(label: str, title: str, body: str | None = None) -> None:
-    """Open a story section with context for the reader."""
-    st.markdown(f'<p class="story-section-label">{label}</p>', unsafe_allow_html=True)
-    st.subheader(title)
-    if body:
-        st.caption(body)
+def render_board_decisions(decisions: list[dict]) -> None:
+    """Render three board decisions: success, risk, action."""
+    st.subheader("What the board should know this month")
+    cols = st.columns(3)
+    style_map = {
+        "Success": "decision-success",
+        "Risk": "decision-risk",
+        "Action": "decision-action",
+    }
+    for column, decision in zip(cols, decisions):
+        css = style_map.get(decision["type"], "")
+        column.markdown(
+            f"""
+            <div class="decision-card {css}">
+                <div class="decision-type">{decision['type']} · {decision['owner']}</div>
+                <strong>{decision['title']}</strong>
+                <p style="margin-top:0.45rem; margin-bottom:0; color:#334155;">{decision['detail']}</p>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
 
 
-def render_insight_list(title: str, bullets: list[str], icon: str = "💡") -> None:
-    """Render key takeaways as a scannable insight block."""
-    st.markdown(f"**{icon} {title}**")
-    for bullet in bullets:
-        st.markdown(f"- {bullet}")
-
-
-def render_metric_row(metrics: list[tuple[str, str]], help_texts: list[str] | None = None) -> None:
-    """Render a row of KPI cards with optional context tooltips."""
+def render_metric_row(
+    metrics: list[tuple[str, str]],
+    help_texts: list[str] | None = None,
+    deltas: list[str | None] | None = None,
+) -> None:
+    """Render KPI cards with optional status deltas."""
     columns = st.columns(len(metrics))
     for index, (column, (label, value)) in enumerate(zip(columns, metrics)):
         help_text = help_texts[index] if help_texts and index < len(help_texts) else None
-        column.metric(label, value, help=help_text)
+        delta = deltas[index] if deltas and index < len(deltas) else None
+        column.metric(label, value, delta=delta, help=help_text)
 
 
-def page_executive_overview(data: dict) -> None:
-    """Executive story: portfolio health at a glance."""
+def status_delta(metric_key: str, value: float) -> str:
+    """Format traffic-light status text for Streamlit metric deltas."""
+    _, message = du.kpi_status(metric_key, value)
+    return message
+
+
+def multiselect_with_all(label: str, options: list, key: str) -> list:
+    """Owner-friendly multiselect that defaults to All."""
+    options = sorted(options)
+    choice = st.sidebar.selectbox(
+        label,
+        ["All"] + options,
+        key=f"{key}_mode",
+    )
+    if choice == "All":
+        return options
+    return [choice]
+
+
+def page_board_overview(data: dict) -> None:
+    """Board overview: decisions first, then a few proof metrics and charts."""
     story = du.build_executive_story(data)
     kpis = story["kpis"]
+    decisions = du.build_board_decisions(data)
 
-    st.title("Executive Overview")
+    st.title("Board Overview")
+    render_period_banner(data)
     render_story_headline(story["headline"])
-
-    render_story_section(
-        "Act 1 — The big picture",
-        "How is the bank performing overall?",
-        "Start with scale and health across customers, money flow, and lending.",
-    )
-    render_metric_row(
-        [
-            ("Total Customers", f"{kpis['total_customers']:,}"),
-            ("Active Accounts", f"{kpis['active_accounts']:,}"),
-            ("Premium Customers", f"{kpis['premium_customers']:,}"),
-            ("Digital Share", f"{story['digital_share']:.1f}%"),
-        ],
-        help_texts=[
-            "Total registered retail and commercial clients.",
-            "Accounts currently open and operational.",
-            "Highest service-tier customers.",
-            "Share of transactions via mobile and online channels.",
-        ],
-    )
-    render_metric_row(
-        [
-            ("Transaction Volume", f"{kpis['total_transactions']:,}"),
-            ("Transaction Value", du.format_tzs(kpis["total_transaction_value"])),
-            ("Loan Portfolio", du.format_tzs(kpis["total_loan_portfolio"])),
-            ("NPL Rate", f"{kpis['npl_rate']:.2f}%"),
-        ],
-        help_texts=[
-            "All processed transactions in the period.",
-            "Total monetary flow through the bank.",
-            "Outstanding lending exposure.",
-            "Non-performing loans (Late + Default) as % of book.",
-        ],
-    )
-
-    col_insight, col_watch = st.columns(2)
-    with col_insight:
-        render_insight_list("Key takeaways", story["bullets"])
-    with col_watch:
-        render_insight_list("Management watchlist", story["watchouts"], icon="⚠️")
+    render_board_decisions(decisions)
 
     st.divider()
-    render_story_section(
-        "Act 2 — What is driving performance?",
-        "Trends behind the numbers",
-        "Each chart answers one strategic question for leadership.",
+    st.subheader("Performance snapshot")
+    st.caption("Four numbers every bank owner should check first.")
+
+    render_metric_row(
+        [
+            ("Customers", f"{kpis['total_customers']:,}"),
+            ("Payment value", du.format_tzs(kpis["total_transaction_value"])),
+            ("Loan book", du.format_tzs(kpis["total_loan_portfolio"])),
+            ("% on phone/online", f"{kpis['digital_share']:.1f}%"),
+        ],
+        help_texts=[
+            "Total customers in this portfolio view.",
+            "Total money moved through transactions.",
+            "Total lending exposure.",
+            "Share of transactions on Mobile, USSD, or Internet Banking.",
+        ],
+        deltas=[None, None, None, status_delta("digital_share", kpis["digital_share"])],
     )
 
+    render_metric_row(
+        [
+            ("On-time repayment", f"{kpis['on_time_rate']:.1f}%"),
+            ("Watchlist (late)", f"{kpis['watchlist_rate']:.1f}%"),
+            ("Default rate", f"{kpis['default_rate']:.1f}%"),
+            ("Premium customers", f"{kpis['premium_share']:.1f}%"),
+        ],
+        help_texts=[
+            "Loans currently repaying on schedule.",
+            "Late loans — early warning, not yet default.",
+            "Loans already in default status.",
+            "Share of customers in the Premium service tier.",
+        ],
+        deltas=[
+            status_delta("on_time_rate", kpis["on_time_rate"]),
+            status_delta("watchlist_rate", kpis["watchlist_rate"]),
+            status_delta("default_rate", kpis["default_rate"]),
+            None,
+        ],
+    )
+
+    with st.expander("Key takeaways and watchlist", expanded=False):
+        col1, col2 = st.columns(2)
+        with col1:
+            st.markdown("**Key takeaways**")
+            for bullet in story["bullets"]:
+                st.markdown(f"- {bullet}")
+        with col2:
+            st.markdown("**Watchlist**")
+            for bullet in story["watchouts"]:
+                st.markdown(f"- {bullet}")
+
+    st.divider()
+    st.subheader("Two charts that explain the story")
     col1, col2 = st.columns(2)
     with col1:
-        st.plotly_chart(du.create_customer_growth_chart(data["customers"]), use_container_width=True)
-        st.caption("**So what?** Sustained customer growth expands the cross-sell funnel.")
-        st.plotly_chart(du.create_loan_portfolio_distribution(data["loans"]), use_container_width=True)
-        st.caption("**So what?** Product concentration informs capital and risk limits.")
-    with col2:
-        st.plotly_chart(du.create_transaction_volume_trend(data["transactions"]), use_container_width=True)
-        st.caption(
-            f"**So what?** Latest monthly volume moved {story.get('tx_growth', 0.0):+.1f}% — monitor momentum."
-        )
         st.plotly_chart(du.create_channel_usage_chart(data["transactions"]), use_container_width=True)
         st.caption(
-            f"**So what?** {story['top_channel']} leads at {story['channel_share']:.0f}% — "
-            "prioritize digital reliability."
+            f"**Decision:** Protect {story['top_channel']} reliability — it already carries "
+            f"{story['channel_share']:.0f}% of payments."
+        )
+    with col2:
+        st.plotly_chart(
+            du.create_loan_charts(
+                data["loans"],
+                data["loans"].merge(data["customers"][["customer_id", "region"]], on="customer_id", how="left"),
+            )["repayment_status"],
+            use_container_width=True,
+        )
+        st.caption(
+            f"**Decision:** Keep collections focused — defaults are {kpis['default_rate']:.1f}% "
+            f"and late loans are {kpis['watchlist_rate']:.1f}%."
         )
 
 
 def page_customer_analytics(data: dict) -> None:
-    """Customer story: who we serve and where value sits."""
+    """Customer story for growth and value concentration."""
     customers = data["customers"]
     accounts = data["accounts"]
 
-    st.sidebar.subheader("Customer Filters")
-    selected_regions = st.sidebar.multiselect(
-        "Region", sorted(customers["region"].unique()), default=sorted(customers["region"].unique())
-    )
-    selected_genders = st.sidebar.multiselect(
-        "Gender", sorted(customers["gender"].unique()), default=sorted(customers["gender"].unique())
-    )
-    selected_types = st.sidebar.multiselect(
-        "Customer Type",
-        sorted(customers["customer_type"].unique()),
-        default=sorted(customers["customer_type"].unique()),
+    st.sidebar.subheader("Customer filters")
+    selected_regions = multiselect_with_all("Region", customers["region"].unique().tolist(), "cust_region")
+    selected_genders = multiselect_with_all("Gender", customers["gender"].unique().tolist(), "cust_gender")
+    selected_types = multiselect_with_all(
+        "Customer type", customers["customer_type"].unique().tolist(), "cust_type"
     )
 
     filtered_customers = du.filter_customers(
@@ -209,69 +289,68 @@ def page_customer_analytics(data: dict) -> None:
     customer_value = du.enrich_customer_value(filtered_customers, filtered_accounts)
     story = du.build_customer_story(filtered_customers, customer_value)
     customer_kpis = du.calculate_customer_kpis(filtered_customers)
-
-    st.title("Customer Analytics")
-    render_story_headline(story["headline"])
-
-    render_story_section(
-        "Context",
-        "Who are our customers?",
-        "Demographics and segments reveal where to invest in acquisition and retention.",
+    premium_share = (filtered_customers["customer_type"] == "Premium").mean() * 100
+    premium_balance_share = (
+        customer_value.loc[customer_value["customer_type"] == "Premium", "total_balance"].sum()
+        / customer_value["total_balance"].sum()
+        * 100
+        if customer_value["total_balance"].sum()
+        else 0.0
     )
+
+    st.title("Customers")
+    render_period_banner(data)
+    render_story_headline(story["headline"])
+    st.caption(
+        f"Showing **{len(filtered_customers):,}** of **{len(customers):,}** customers after filters."
+    )
+
     render_metric_row(
         [
-            ("Customers in View", f"{customer_kpis['total_customers']:,}"),
-            ("Average Age", f"{customer_kpis['average_age']:.1f} yrs"),
-            ("Premium Share", f"{(filtered_customers['customer_type'] == 'Premium').mean() * 100:.1f}%"),
-            ("Regions", f"{customer_kpis['regions_covered']}"),
-        ]
+            ("Customers shown", f"{customer_kpis['total_customers']:,}"),
+            ("Average age", f"{customer_kpis['average_age']:.0f} years"),
+            ("Premium share", f"{premium_share:.1f}%"),
+            ("Premium balance share", f"{premium_balance_share:.1f}%"),
+        ],
+        help_texts=[
+            "Customers after applying filters.",
+            "Average age of customers in view.",
+            "Share of Premium-tier customers.",
+            "Share of total balances held by Premium customers.",
+        ],
     )
-    render_insight_list("What this means", story["bullets"])
     st.info(f"**Recommended action:** {story['action']}")
 
-    st.divider()
     charts = du.create_customer_charts(filtered_customers, customer_value)
-
-    render_story_section("Deep dive", "Demographics and value", "Compare geography, age, and wallet share.")
     col1, col2 = st.columns(2)
     with col1:
         st.plotly_chart(charts["region"], use_container_width=True)
-        st.plotly_chart(charts["age_group"], use_container_width=True)
-    with col2:
-        st.plotly_chart(charts["customer_type"], use_container_width=True)
-        st.plotly_chart(charts["occupation"], use_container_width=True)
-
-    col3, col4 = st.columns(2)
-    with col3:
         st.plotly_chart(charts["balance_by_type"], use_container_width=True)
-        st.caption("**So what?** Widen the gap between Basic and Premium through targeted savings products.")
-    with col4:
+        st.caption("**So what?** Grow Premium balances with targeted savings and investment offers.")
+    with col2:
+        st.plotly_chart(charts["age_group"], use_container_width=True)
         st.plotly_chart(charts["segment_distribution"], use_container_width=True)
-        st.caption("**So what?** High Activity and Premium segments deserve relationship-manager coverage.")
+        st.caption("**So what?** Assign relationship managers to Premium and High Activity segments.")
 
 
 def page_transaction_analytics(data: dict) -> None:
-    """Transaction story: how customers interact with the bank."""
+    """Payments story for digital adoption and channel performance."""
     transactions = data["transactions"]
     min_date = transactions["transaction_date"].min().date()
     max_date = transactions["transaction_date"].max().date()
 
-    st.sidebar.subheader("Transaction Filters")
+    st.sidebar.subheader("Payment filters")
     date_range = st.sidebar.date_input(
-        "Date Range", value=(min_date, max_date), min_value=min_date, max_value=max_date
+        "Date range", value=(min_date, max_date), min_value=min_date, max_value=max_date
     )
-    selected_regions = st.sidebar.multiselect(
-        "Region",
-        sorted(transactions["region"].dropna().unique()),
-        default=sorted(transactions["region"].dropna().unique()),
+    selected_regions = multiselect_with_all(
+        "Region", transactions["region"].dropna().unique().tolist(), "txn_region"
     )
-    selected_channels = st.sidebar.multiselect(
-        "Channel", sorted(transactions["channel"].unique()), default=sorted(transactions["channel"].unique())
+    selected_channels = multiselect_with_all(
+        "Channel", transactions["channel"].unique().tolist(), "txn_channel"
     )
-    selected_types = st.sidebar.multiselect(
-        "Transaction Type",
-        sorted(transactions["transaction_type"].unique()),
-        default=sorted(transactions["transaction_type"].unique()),
+    selected_types = multiselect_with_all(
+        "Transaction type", transactions["transaction_type"].unique().tolist(), "txn_type"
     )
 
     parsed_range = None
@@ -292,57 +371,62 @@ def page_transaction_analytics(data: dict) -> None:
     story = du.build_transaction_story(filtered_transactions)
     tx_kpis = du.calculate_transaction_kpis(filtered_transactions)
 
-    st.title("Transaction Analytics")
+    st.title("Payments")
+    render_period_banner(data)
     render_story_headline(story["headline"])
-
-    render_story_section(
-        "Context",
-        "How are customers banking?",
-        "Volume, value, and channel mix show digital adoption and operational load.",
+    st.caption(
+        f"Showing **{len(filtered_transactions):,}** of **{len(transactions):,}** transactions after filters."
     )
+
     render_metric_row(
         [
             ("Transactions", f"{tx_kpis['transaction_count']:,}"),
-            ("Total Value", du.format_tzs(tx_kpis["transaction_value"])),
-            ("Average Ticket", du.format_tzs(tx_kpis["average_transaction_amount"])),
-            ("MoM Volume Change", f"{story.get('tx_growth', 0.0):+.1f}%"),
-        ]
+            ("Total value", du.format_tzs(tx_kpis["transaction_value"])),
+            ("Average payment", du.format_tzs(tx_kpis["average_transaction_amount"])),
+            ("Change vs last month", f"{story.get('tx_growth', 0.0):+.1f}%"),
+        ],
+        help_texts=[
+            "Number of payments in the filtered view.",
+            "Total money moved.",
+            "Average amount per payment.",
+            "Transaction count change versus the previous month.",
+        ],
     )
-    render_insight_list("What this means", story["bullets"])
     st.info(f"**Recommended action:** {story['action']}")
 
-    st.divider()
     charts = du.create_transaction_charts(filtered_transactions)
-    render_story_section("Deep dive", "Trends and channel behavior")
-
     col1, col2 = st.columns(2)
     with col1:
         st.plotly_chart(charts["volume_trend"], use_container_width=True)
         st.plotly_chart(charts["transaction_type"], use_container_width=True)
     with col2:
-        st.plotly_chart(charts["value_trend"], use_container_width=True)
         st.plotly_chart(charts["channel_performance"], use_container_width=True)
-        st.caption("**So what?** Invest in the channels that combine high volume with high value.")
+        st.caption(
+            "**So what?** Invest first in channels that combine high volume with high value "
+            "(usually Mobile App and Branch for large tickets)."
+        )
 
 
 def page_loan_analytics(data: dict) -> None:
-    """Loan story: credit health and risk exposure."""
+    """Credit risk story for portfolio health."""
     loans = data["loans"]
     customers = data["customers"]
 
-    st.sidebar.subheader("Loan Filters")
-    selected_regions = st.sidebar.multiselect(
-        "Region", sorted(customers["region"].unique()), default=sorted(customers["region"].unique())
+    st.sidebar.subheader("Credit filters")
+    selected_regions = multiselect_with_all("Region", customers["region"].unique().tolist(), "loan_region")
+    selected_loan_types = multiselect_with_all(
+        "Loan type", loans["loan_type"].unique().tolist(), "loan_type"
     )
-    selected_loan_types = st.sidebar.multiselect(
-        "Loan Type", sorted(loans["loan_type"].unique()), default=sorted(loans["loan_type"].unique())
-    )
-    selected_risk = st.sidebar.multiselect(
-        "Risk Category", sorted(loans["risk_category"].unique()), default=sorted(loans["risk_category"].unique())
+    selected_risk = multiselect_with_all(
+        "Risk category", loans["risk_category"].unique().tolist(), "loan_risk"
     )
 
     filtered_loans, filtered_merged = du.filter_loans(
-        loans, customers, regions=selected_regions, loan_types=selected_loan_types, risk_categories=selected_risk
+        loans,
+        customers,
+        regions=selected_regions,
+        loan_types=selected_loan_types,
+        risk_categories=selected_risk,
     )
     if filtered_loans.empty:
         st.warning("No loans match the selected filters.")
@@ -351,71 +435,75 @@ def page_loan_analytics(data: dict) -> None:
     story = du.build_loan_story(filtered_loans, filtered_merged)
     loan_kpis = du.calculate_loan_kpis(filtered_loans)
 
-    st.title("Loan Portfolio Analytics")
+    st.title("Credit Risk")
+    render_period_banner(data)
     render_story_headline(story["headline"])
+    st.caption(f"Showing **{len(filtered_loans):,}** of **{len(loans):,}** loans after filters.")
 
-    render_story_section(
-        "Context",
-        "How healthy is the loan book?",
-        "Repayment performance and regional risk guide provisioning and collections.",
+    st.subheader("Portfolio health")
+    render_metric_row(
+        [
+            ("Loans shown", f"{loan_kpis['total_loans']:,}"),
+            ("Portfolio value", du.format_tzs(loan_kpis["total_loan_amount"])),
+            ("Average loan size", du.format_tzs(loan_kpis["average_loan_size"])),
+            ("On-time repayment", f"{loan_kpis['on_time_rate']:.1f}%"),
+        ],
+        deltas=[None, None, None, status_delta("on_time_rate", loan_kpis["on_time_rate"])],
     )
     render_metric_row(
         [
-            ("Loans in View", f"{loan_kpis['total_loans']:,}"),
-            ("Portfolio Value", du.format_tzs(loan_kpis["total_loan_amount"])),
-            ("Average Loan", du.format_tzs(loan_kpis["average_loan_size"])),
-            ("NPL Rate", f"{loan_kpis['npl_rate']:.2f}%"),
-        ]
+            ("Watchlist (late)", f"{loan_kpis['watchlist_rate']:.1f}%"),
+            ("Default rate", f"{loan_kpis['default_rate']:.1f}%"),
+            ("At-risk (late + default)", f"{loan_kpis['at_risk_rate']:.1f}%"),
+        ],
+        help_texts=[
+            "Late loans needing early collections outreach.",
+            "Loans already in default.",
+            "Combined late and default share — useful as a broad risk pulse.",
+        ],
+        deltas=[
+            status_delta("watchlist_rate", loan_kpis["watchlist_rate"]),
+            status_delta("default_rate", loan_kpis["default_rate"]),
+            status_delta("at_risk_rate", loan_kpis["at_risk_rate"]),
+        ],
     )
-    render_insight_list("What this means", story["bullets"])
     st.info(f"**Recommended action:** {story['action']}")
 
-    st.divider()
     charts = du.create_loan_charts(filtered_loans, filtered_merged)
-    render_story_section("Deep dive", "Products, repayment, and regional risk")
-
     col1, col2 = st.columns(2)
     with col1:
-        st.plotly_chart(charts["loan_products"], use_container_width=True)
-        st.plotly_chart(charts["risk_distribution"], use_container_width=True)
-        st.plotly_chart(charts["loan_amount_distribution"], use_container_width=True)
-    with col2:
         st.plotly_chart(charts["repayment_status"], use_container_width=True)
         st.plotly_chart(charts["default_by_region"], use_container_width=True)
-        st.caption("**So what?** Deploy collections capacity to regions with elevated default rates.")
+        st.caption("**So what?** Put collections capacity in the highest-default regions first.")
+    with col2:
+        st.plotly_chart(charts["risk_distribution"], use_container_width=True)
+        st.plotly_chart(charts["loan_products"], use_container_width=True)
 
 
 def main() -> None:
-    """Run the banking analytics dashboard."""
+    """Run the board-ready banking analytics dashboard."""
     st.sidebar.title("🏦 Banking Analytics")
-    st.sidebar.markdown("**Tanzania Banking Intelligence**")
-    st.sidebar.caption("A guided data story across customers, transactions, and loans.")
+    st.sidebar.markdown("**For bank owners & EXCO**")
+    st.sidebar.caption("Start on Board Overview. Drill into Customers, Payments, or Credit Risk only when needed.")
 
     page = st.sidebar.radio(
-        "Navigate the story",
+        "Go to",
         [
-            "📊 Executive Overview",
-            "👥 Customer Analytics",
-            "💳 Transaction Analytics",
-            "🏦 Loan Analytics",
+            "📊 Board Overview",
+            "👥 Customers",
+            "💳 Payments",
+            "🏦 Credit Risk",
         ],
     )
 
     st.sidebar.divider()
-    st.sidebar.markdown("**How to read this dashboard**")
+    st.sidebar.markdown("**How to read this**")
     st.sidebar.markdown(
-        "1. **Headline** — the main insight\n"
-        "2. **KPIs** — evidence at a glance\n"
-        "3. **Charts** — why it matters\n"
-        "4. **Action** — what to do next"
+        "1. **Board decisions** — what to do\n"
+        "2. **Snapshot KPIs** — proof\n"
+        "3. **Status tags** — on track / watch / needs attention\n"
+        "4. **Charts** — where to act"
     )
-    st.sidebar.divider()
-    st.sidebar.caption("Source: cleaned banking datasets")
-    try:
-        data_dir = du.resolve_data_dir()
-        st.sidebar.caption(f"Data folder: `{data_dir.name}`")
-    except Exception:
-        pass
 
     try:
         data = get_datasets()
@@ -426,11 +514,11 @@ def main() -> None:
         st.error(f"Unable to load dashboard data: {exc}")
         st.stop()
 
-    if page == "📊 Executive Overview":
-        page_executive_overview(data)
-    elif page == "👥 Customer Analytics":
+    if page == "📊 Board Overview":
+        page_board_overview(data)
+    elif page == "👥 Customers":
         page_customer_analytics(data)
-    elif page == "💳 Transaction Analytics":
+    elif page == "💳 Payments":
         page_transaction_analytics(data)
     else:
         page_loan_analytics(data)
