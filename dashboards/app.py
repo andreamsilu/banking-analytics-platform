@@ -275,7 +275,7 @@ st.markdown(CSS, unsafe_allow_html=True)
 
 
 @st.cache_data(show_spinner="Loading H1 2026 banking datasets...")
-def get_datasets():
+def get_datasets(_reporting_window: str = "2026-01-01_2026-06-30"):
     """Load datasets sliced to the closed Jan–Jun 2026 reporting window."""
     return du.load_data()
 

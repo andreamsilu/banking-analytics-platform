@@ -16,6 +16,9 @@ import plotly.graph_objects as go
 
 from src.dashboard_utils import (
     DIGITAL_CHANNELS,
+    REPORTING_PERIOD_END,
+    REPORTING_PERIOD_LABEL,
+    REPORTING_PERIOD_START,
     apply_chart_theme,
     calculate_credit_health,
     enrich_customer_value,
@@ -696,20 +699,28 @@ def build_business_alerts(data: dict[str, pd.DataFrame], ribbon: list[dict[str, 
 
 def create_monthly_performance_trend(data: dict[str, pd.DataFrame]) -> go.Figure:
     """
-    Monthly business growth trend for deposits, transaction value, and loan portfolio.
+    H1 monthly business trend for deposits, transaction value, and loan portfolio.
 
-    Stock metrics (deposits, loans) are approximated as cumulative book size by month-end.
+    X-axis is locked to the closed reporting window (Jan–Jun 2026).
+    Stock metrics use cumulative book size by month-end; transaction value uses a
+    secondary axis because monthly flow is much smaller than book stock.
     """
     accounts = data["accounts"].copy()
     loans = data["loans"].copy()
     transactions = data["transactions"].copy()
 
+    start = REPORTING_PERIOD_START
+    end = REPORTING_PERIOD_END
+
+    # Always plot the closed H1 window, even if cached data was wider historically.
+    transactions = transactions[
+        (transactions["transaction_date"] >= start) & (transactions["transaction_date"] <= end)
+    ]
+    accounts = accounts[accounts["opening_date"] <= end]
+    loans = loans[loans["loan_date"] <= end]
+
     months = (
-        pd.period_range(
-            start=transactions["transaction_date"].min().to_period("M"),
-            end=transactions["transaction_date"].max().to_period("M"),
-            freq="M",
-        )
+        pd.period_range(start=start.to_period("M"), end=end.to_period("M"), freq="M")
         .to_timestamp(how="end")
         .normalize()
     )
@@ -738,7 +749,7 @@ def create_monthly_performance_trend(data: dict[str, pd.DataFrame]) -> go.Figure
         )
 
     trend = (
-        pd.DataFrame({"month_end": months})
+        pd.DataFrame({"month_end": list(months)})
         .merge(pd.DataFrame(deposit_rows), on="month_end", how="left")
         .merge(pd.DataFrame(loan_rows), on="month_end", how="left")
         .merge(txn_monthly[["month_end", "transaction_value"]], on="month_end", how="left")
@@ -755,15 +766,7 @@ def create_monthly_performance_trend(data: dict[str, pd.DataFrame]) -> go.Figure
             name="Deposits",
             mode="lines+markers",
             line=dict(color="#1f4e79", width=2.5),
-        )
-    )
-    fig.add_trace(
-        go.Scatter(
-            x=trend["period"],
-            y=trend["transaction_value"],
-            name="Transaction Value",
-            mode="lines+markers",
-            line=dict(color="#2e75b6", width=2.5),
+            yaxis="y",
         )
     )
     fig.add_trace(
@@ -773,15 +776,30 @@ def create_monthly_performance_trend(data: dict[str, pd.DataFrame]) -> go.Figure
             name="Loan Portfolio",
             mode="lines+markers",
             line=dict(color="#70ad47", width=2.5),
+            yaxis="y",
+        )
+    )
+    fig.add_trace(
+        go.Scatter(
+            x=trend["period"],
+            y=trend["transaction_value"],
+            name="Transaction Value",
+            mode="lines+markers",
+            line=dict(color="#2e75b6", width=2.5, dash="dot"),
+            yaxis="y2",
         )
     )
     fig.update_layout(
-        title="Monthly Performance Trend",
-        yaxis_title="TZS",
+        title=f"Monthly Performance Trend ({REPORTING_PERIOD_LABEL})",
+        yaxis=dict(title="Book size (TZS)", side="left"),
+        yaxis2=dict(title="Monthly transaction value (TZS)", overlaying="y", side="right", showgrid=False),
         legend=dict(orientation="h", yanchor="bottom", y=1.02, x=0),
         hovermode="x unified",
     )
     return apply_chart_theme(
         fig,
-        subtitle="Deposits and loans shown as cumulative book size; transaction value is monthly flow.",
+        subtitle=(
+            "H1 2026 only · Deposits & loans = cumulative book by month-end · "
+            "Transaction value = monthly flow (right axis)."
+        ),
     )
