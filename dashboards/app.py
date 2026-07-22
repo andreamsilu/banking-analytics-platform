@@ -300,15 +300,18 @@ def format_mom(pct: float, is_pp: bool = False) -> str:
 
 def render_period_banner(data: dict) -> None:
     meta = du.reporting_period(data)
+    period_label = meta.get("period_label", getattr(du, "REPORTING_PERIOD_LABEL", "Jan 2026 – Jun 2026"))
+    window_note = meta.get("window_note", "H1 2026 closed period (1 Jan – 30 Jun)")
+    last_refresh = meta.get("last_refresh", "—")
     st.markdown(
         f"""
         <div class="period-banner">
-            <strong>Reporting period:</strong> {meta['period_label']}
-            &nbsp;·&nbsp; <strong>Window:</strong> {meta['window_note']}
-            &nbsp;·&nbsp; <strong>Currency:</strong> {meta['currency']}
-            &nbsp;·&nbsp; <strong>Data layer:</strong> {meta['view_label']}
-            &nbsp;·&nbsp; <strong>Customers:</strong> {meta['customer_count']}
-            <br/><strong>Last refresh:</strong> {meta['last_refresh']}
+            <strong>Reporting period:</strong> {period_label}
+            &nbsp;·&nbsp; <strong>Window:</strong> {window_note}
+            &nbsp;·&nbsp; <strong>Currency:</strong> {meta.get('currency', 'TZS')}
+            &nbsp;·&nbsp; <strong>Data layer:</strong> {meta.get('view_label', 'Analytics mart')}
+            &nbsp;·&nbsp; <strong>Customers:</strong> {meta.get('customer_count', '—')}
+            <br/><strong>Last refresh:</strong> {last_refresh}
         </div>
         """,
         unsafe_allow_html=True,
