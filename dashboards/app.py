@@ -731,7 +731,7 @@ def page_credit(data: dict) -> None:
     st.caption(f"Showing **{len(filtered):,}** of **{len(loans):,}** loans.")
 
     credit = du.calculate_credit_health(filtered)
-    income = du.estimate_interest_income(
+    income = du.get_interest_income(
         filtered, du.REPORTING_PERIOD_START, du.REPORTING_PERIOD_END
     )
     c1, c2, c3, c4, c5 = st.columns(5)
@@ -740,9 +740,9 @@ def page_credit(data: dict) -> None:
     c3.metric("Default rate", f"{credit['default_rate']:.1f}%")
     c4.metric("NPL ratio (late+default)", f"{credit['at_risk_rate']:.1f}%")
     c5.metric(
-        "Est. H1 interest income",
+        "H1 interest income",
         du.format_tzs(income["total"]),
-        help="Approximate interest accrued in H1 2026 on the performing book (loan × rate ÷ 12 × active months).",
+        help="Interest income for the filtered performing book in H1 2026 (from loan monthly_interest).",
     )
 
     col1, col2 = st.columns(2)

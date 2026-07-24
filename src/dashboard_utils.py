@@ -30,6 +30,7 @@ REQUIRED_FILES = {
     "accounts": "accounts_clean.csv",
     "transactions": "transactions_clean.csv",
     "loans": "loans_clean.csv",
+    "interest_income_monthly": "interest_income_monthly_clean.csv",
 }
 
 PREMIUM_BALANCE_THRESHOLD = 5_000_000
@@ -87,41 +88,67 @@ def format_pct(value: float, decimals: int = 1) -> str:
     return f"{value:.{decimals}f}%"
 
 
-def estimate_interest_income(
-    loans: pd.DataFrame,
+def get_interest_income(
+    data: dict[str, pd.DataFrame] | pd.DataFrame,
     period_start: pd.Timestamp | None = None,
     period_end: pd.Timestamp | None = None,
     *,
     performing_only: bool = True,
 ) -> dict[str, Any]:
     """
-    Approximate contractual interest income accrued in a reporting window.
+    Return interest income from the published monthly fact table.
 
-    Method
-    ------
-    For each month-end in the window, estimate monthly interest as:
-    ``loan_amount * (interest_rate / 100) / 12`` for loans whose contractual
-    life overlaps that month. Defaults can be excluded so the figure reflects
-    the performing book (management revenue proxy, not audited NII).
-
-    Returns
-    -------
-    dict with total income, monthly series, and average monthly run-rate.
+    Prefers ``data['interest_income_monthly']`` produced by the cleaning
+    pipeline. Falls back to deriving monthly totals from the loan book only
+    when the fact table is unavailable (legacy extracts).
     """
     period_start = pd.Timestamp(period_start or REPORTING_PERIOD_START).normalize()
     period_end = pd.Timestamp(period_end or REPORTING_PERIOD_END).normalize()
+    income_col = "interest_income" if performing_only else "interest_income_all"
 
+    if isinstance(data, dict) and "interest_income_monthly" in data and not data["interest_income_monthly"].empty:
+        monthly = data["interest_income_monthly"].copy()
+        monthly["accrual_month"] = pd.to_datetime(monthly["accrual_month"])
+        monthly = monthly[
+            (monthly["accrual_month"] >= period_start) & (monthly["accrual_month"] <= period_end)
+        ].sort_values("accrual_month")
+        if income_col not in monthly.columns:
+            income_col = "interest_income"
+        series = monthly[["accrual_month", income_col]].rename(
+            columns={"accrual_month": "month_end", income_col: "interest_income"}
+        )
+    else:
+        loans = data if isinstance(data, pd.DataFrame) else data.get("loans", pd.DataFrame())
+        series = _derive_interest_income_monthly(loans, period_start, period_end, performing_only)
+
+    total = float(series["interest_income"].sum()) if not series.empty else 0.0
+    latest = float(series["interest_income"].iloc[-1]) if not series.empty else 0.0
+    prior = float(series["interest_income"].iloc[-2]) if len(series) > 1 else 0.0
+
+    return {
+        "total": total,
+        "monthly": series.reset_index(drop=True),
+        "latest_month": latest,
+        "prior_month": prior,
+    }
+
+
+def _derive_interest_income_monthly(
+    loans: pd.DataFrame,
+    period_start: pd.Timestamp,
+    period_end: pd.Timestamp,
+    performing_only: bool,
+) -> pd.DataFrame:
+    """Legacy fallback when interest_income_monthly_clean.csv is missing."""
     if loans.empty:
-        return {
-            "total": 0.0,
-            "monthly": pd.DataFrame(columns=["month_end", "interest_income"]),
-            "latest_month": 0.0,
-            "prior_month": 0.0,
-        }
+        return pd.DataFrame(columns=["month_end", "interest_income"])
 
     book = loans.copy()
     book["loan_date"] = pd.to_datetime(book["loan_date"])
-    # Approximate maturity without row-wise DateOffset (faster on large books).
+    if "monthly_interest" in book.columns:
+        book["_monthly_interest"] = book["monthly_interest"].astype(float)
+    else:
+        book["_monthly_interest"] = book["loan_amount"] * book["interest_rate"] / 100.0 / 12.0
     book["maturity_date"] = book["loan_date"] + pd.to_timedelta(
         book["duration_months"].astype(float) * 30.44, unit="D"
     )
@@ -133,25 +160,21 @@ def estimate_interest_income(
         .to_timestamp(how="end")
         .normalize()
     )
-
     rows: list[dict[str, Any]] = []
     for month_end in month_ends:
         month_start = (month_end.to_period("M").to_timestamp(how="start")).normalize()
         active = book[(book["loan_date"] <= month_end) & (book["maturity_date"] >= month_start)]
-        monthly_income = float((active["loan_amount"] * active["interest_rate"] / 100.0 / 12.0).sum())
-        rows.append({"month_end": month_end, "interest_income": monthly_income})
+        rows.append(
+            {
+                "month_end": month_end,
+                "interest_income": float(active["_monthly_interest"].sum()),
+            }
+        )
+    return pd.DataFrame(rows)
 
-    monthly = pd.DataFrame(rows)
-    total = float(monthly["interest_income"].sum()) if not monthly.empty else 0.0
-    latest = float(monthly["interest_income"].iloc[-1]) if not monthly.empty else 0.0
-    prior = float(monthly["interest_income"].iloc[-2]) if len(monthly) > 1 else 0.0
 
-    return {
-        "total": total,
-        "monthly": monthly,
-        "latest_month": latest,
-        "prior_month": prior,
-    }
+# Backward-compatible alias used by earlier dashboard revisions.
+estimate_interest_income = get_interest_income
 
 
 def apply_chart_theme(fig: go.Figure, subtitle: str | None = None) -> go.Figure:
@@ -349,7 +372,15 @@ def apply_reporting_period(
         "transactions": transactions,
         "loans": loans,
     }
-    empty = [name for name, df in sliced.items() if df.empty]
+
+    if "interest_income_monthly" in datasets:
+        monthly = datasets["interest_income_monthly"].copy()
+        monthly["accrual_month"] = pd.to_datetime(monthly["accrual_month"])
+        sliced["interest_income_monthly"] = monthly[
+            (monthly["accrual_month"] >= start) & (monthly["accrual_month"] <= end)
+        ].copy()
+
+    empty = [name for name, df in sliced.items() if name != "interest_income_monthly" and df.empty]
     if empty:
         raise DataLoadError(
             f"No data available for reporting period {start.date()} to {end.date()} "
@@ -368,7 +399,8 @@ def load_data(data_dir: Path | None = None) -> dict[str, pd.DataFrame]:
         If any required file is missing or empty, or the reporting window has no rows.
     """
     data_dir = resolve_data_dir(data_dir)
-    missing = [name for name, filename in REQUIRED_FILES.items() if not (data_dir / filename).exists()]
+    core_required = {k: v for k, v in REQUIRED_FILES.items() if k != "interest_income_monthly"}
+    missing = [name for name, filename in core_required.items() if not (data_dir / filename).exists()]
     if missing:
         files = ", ".join(REQUIRED_FILES[name] for name in missing)
         raise DataLoadError(
@@ -387,7 +419,11 @@ def load_data(data_dir: Path | None = None) -> dict[str, pd.DataFrame]:
         "loans": loans,
     }
 
-    empty = [name for name, df in datasets.items() if df.empty]
+    income_path = data_dir / REQUIRED_FILES["interest_income_monthly"]
+    if income_path.exists():
+        datasets["interest_income_monthly"] = _read_csv(income_path, ["accrual_month"])
+
+    empty = [name for name, df in datasets.items() if name != "interest_income_monthly" and df.empty]
     if empty:
         raise DataLoadError(
             f"Dataset empty: {', '.join(empty)}. Please regenerate processed data before opening the dashboard."
@@ -1030,6 +1066,7 @@ __all__ = [
     "create_transaction_volume_trend",
     "enrich_customer_value",
     "estimate_interest_income",
+    "get_interest_income",
     "filter_customers",
     "filter_loans",
     "filter_transactions",

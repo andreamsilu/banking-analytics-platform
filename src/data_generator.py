@@ -481,6 +481,10 @@ def generate_loans(
         np.where(maturity_ordinals < today.toordinal(), "Closed", "Active"),
     )
 
+    # Contractual interest amounts stored as first-class loan attributes.
+    monthly_interest = np.round(loan_amounts * (interest_rates / 100.0) / 12.0, 2)
+    total_contractual_interest = np.round(monthly_interest * duration_months, 2)
+
     loans = pd.DataFrame(
         {
             "loan_id": [f"LOAN{i:06d}" for i in range(1, count + 1)],
@@ -492,6 +496,8 @@ def generate_loans(
             "duration_months": duration_months,
             "repayment_status": repayment_statuses,
             "loan_status": loan_statuses,
+            "monthly_interest": monthly_interest,
+            "total_contractual_interest": total_contractual_interest,
         }
     )
 

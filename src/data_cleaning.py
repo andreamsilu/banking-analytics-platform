@@ -390,12 +390,71 @@ def clean_loans(df: pd.DataFrame, customers: pd.DataFrame | None = None) -> pd.D
 
     cleaned["risk_category"] = cleaned["repayment_status"].map(_assign_loan_risk_category)
 
+    # Persist contractual interest as analysis-ready loan attributes.
+    cleaned["monthly_interest"] = (
+        cleaned["loan_amount"] * cleaned["interest_rate"] / 100.0 / 12.0
+    ).round(2)
+    cleaned["total_contractual_interest"] = (
+        cleaned["monthly_interest"] * cleaned["duration_months"]
+    ).round(2)
+
     logger.info(
         "Loans cleaned: %s -> %s rows",
         f"{initial_rows:,}",
         f"{len(cleaned):,}",
     )
     return cleaned.reset_index(drop=True)
+
+
+def build_interest_income_monthly(
+    loans: pd.DataFrame,
+    period_start: str | pd.Timestamp = "2018-01-01",
+    period_end: str | pd.Timestamp = "2026-12-31",
+) -> pd.DataFrame:
+    """
+    Build a monthly interest-income fact table from the cleaned loan book.
+
+    For each calendar month, sum ``monthly_interest`` for loans whose
+    contractual life overlaps that month. Performing-book income excludes
+    Default repayment status and is the primary revenue measure for BI.
+    """
+    book = loans.copy()
+    book["loan_date"] = pd.to_datetime(book["loan_date"])
+    if "monthly_interest" not in book.columns:
+        book["monthly_interest"] = (
+            book["loan_amount"] * book["interest_rate"] / 100.0 / 12.0
+        ).round(2)
+
+    book["maturity_date"] = book["loan_date"] + pd.to_timedelta(
+        book["duration_months"].astype(float) * 30.44, unit="D"
+    )
+
+    start = pd.Timestamp(period_start).to_period("M")
+    end = pd.Timestamp(period_end).to_period("M")
+    rows: list[dict] = []
+
+    for period in pd.period_range(start=start, end=end, freq="M"):
+        month_start = period.to_timestamp(how="start").normalize()
+        month_end = period.to_timestamp(how="end").normalize()
+        active = book[(book["loan_date"] <= month_end) & (book["maturity_date"] >= month_start)]
+        performing = active[active["repayment_status"] != "Default"]
+        rows.append(
+            {
+                "accrual_month": month_end,
+                "interest_income": float(performing["monthly_interest"].sum()),
+                "interest_income_all": float(active["monthly_interest"].sum()),
+                "active_loans": int(len(active)),
+                "performing_loans": int(len(performing)),
+            }
+        )
+
+    monthly = pd.DataFrame(rows)
+    logger.info(
+        "Interest income monthly fact built: %s months · total performing income %s",
+        f"{len(monthly):,}",
+        f"{monthly['interest_income'].sum():,.0f}",
+    )
+    return monthly
 
 
 # ---------------------------------------------------------------------------
@@ -447,11 +506,13 @@ def main() -> None:
         customers_clean,
     )
     loans_clean = clean_loans(loans_raw, customers_clean)
+    interest_income_monthly = build_interest_income_monthly(loans_clean)
 
     save_cleaned_dataset(customers_clean, "customers_clean.csv")
     save_cleaned_dataset(accounts_clean, "accounts_clean.csv")
     save_cleaned_dataset(transactions_clean, "transactions_clean.csv")
     save_cleaned_dataset(loans_clean, "loans_clean.csv")
+    save_cleaned_dataset(interest_income_monthly, "interest_income_monthly_clean.csv")
 
     logger.info("")
     logger.info("Cleaning completed")

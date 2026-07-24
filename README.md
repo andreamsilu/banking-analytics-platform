@@ -142,7 +142,8 @@ Open the URL shown in the terminal (typically `http://localhost:8501`).
 |---|---|
 | `customers_clean.csv` | `customer_age_group` |
 | `transactions_clean.csv` | `transaction_month`, `transaction_year`, `transaction_hour` |
-| `loans_clean.csv` | `risk_category` |
+| `loans_clean.csv` | `risk_category`, `monthly_interest`, `total_contractual_interest` |
+| `interest_income_monthly_clean.csv` | Monthly performing-book interest income fact |
 
 ### Coverage
 

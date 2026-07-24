@@ -23,6 +23,7 @@ from src.dashboard_utils import (
     calculate_credit_health,
     enrich_customer_value,
     estimate_interest_income,
+    get_interest_income,
     format_count,
     format_tzs,
     kpi_status,
@@ -143,8 +144,8 @@ def build_kpi_ribbon(data: dict[str, pd.DataFrame]) -> list[dict[str, Any]]:
     txn_total = len(transactions)
     monthly_txn_mom = _pct_change(len(txn_now), len(txn_prev))
 
-    # H1 estimated interest income (performing book revenue proxy).
-    income_h1 = estimate_interest_income(loans, REPORTING_PERIOD_START, REPORTING_PERIOD_END)
+    # H1 interest income from published monthly fact (performing book).
+    income_h1 = get_interest_income(data, REPORTING_PERIOD_START, REPORTING_PERIOD_END)
     income_now = income_h1["latest_month"]
     income_prev = income_h1["prior_month"]
     income_total = income_h1["total"]
@@ -182,16 +183,15 @@ def build_kpi_ribbon(data: dict[str, pd.DataFrame]) -> list[dict[str, Any]]:
         },
         {
             "key": "interest_income",
-            "label": "Est. Interest Income",
+            "label": "Interest Income",
             "icon": "trending_up",
             "value": income_total,
             "display": format_tzs(income_total),
             "mom_pct": _pct_change(income_now, income_prev),
             "status": _status_for_kpi("interest_income", income_total),
             "help": (
-                "H1 estimated interest income from the performing loan book: "
-                "loan_amount × rate ÷ 12 for each month a loan is contractually active. "
-                "Management revenue proxy — not audited NII."
+                "H1 interest income from interest_income_monthly (performing loan book). "
+                "Built in the cleaning pipeline from each loan's monthly_interest."
             ),
         },
         {
@@ -294,7 +294,7 @@ def build_executive_summary_text(data: dict[str, pd.DataFrame], ribbon: list[dic
         else "Credit risk requires elevated management attention"
     )
     income_phrase = (
-        f"Estimated H1 interest income from the performing loan book is {income_kpi['display']}."
+        f"H1 interest income from the performing loan book is {income_kpi['display']}."
         if income_kpi
         else ""
     )
@@ -757,7 +757,7 @@ def create_monthly_performance_trend(data: dict[str, pd.DataFrame]) -> go.Figure
     accounts = accounts[accounts["opening_date"] <= end]
     loans = loans[loans["loan_date"] <= end]
 
-    income_monthly = estimate_interest_income(loans, start, end)["monthly"]
+    income_monthly = get_interest_income(data, start, end)["monthly"]
 
     months = (
         pd.period_range(start=start.to_period("M"), end=end.to_period("M"), freq="M")
@@ -834,7 +834,7 @@ def create_monthly_performance_trend(data: dict[str, pd.DataFrame]) -> go.Figure
         go.Scatter(
             x=trend["period"],
             y=trend["interest_income"],
-            name="Est. Interest Income",
+            name="Interest Income",
             mode="lines+markers",
             line=dict(color="#f9a825", width=2.5, dash="dash"),
             yaxis="y2",
@@ -848,7 +848,7 @@ def create_monthly_performance_trend(data: dict[str, pd.DataFrame]) -> go.Figure
                 f"<b>Monthly Performance Trend ({REPORTING_PERIOD_LABEL})</b>"
                 "<br><span style='font-size:12px;color:#64748b;font-weight:400;'>"
                 "H1 2026 only · Deposits &amp; loans = book stock (left) · "
-                "Transaction value &amp; est. interest income = monthly flow (right)"
+                "Transaction value &amp; interest income = monthly flow (right)"
                 "</span>"
             ),
             x=0,
