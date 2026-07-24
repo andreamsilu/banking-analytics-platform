@@ -87,6 +87,73 @@ def format_pct(value: float, decimals: int = 1) -> str:
     return f"{value:.{decimals}f}%"
 
 
+def estimate_interest_income(
+    loans: pd.DataFrame,
+    period_start: pd.Timestamp | None = None,
+    period_end: pd.Timestamp | None = None,
+    *,
+    performing_only: bool = True,
+) -> dict[str, Any]:
+    """
+    Approximate contractual interest income accrued in a reporting window.
+
+    Method
+    ------
+    For each month-end in the window, estimate monthly interest as:
+    ``loan_amount * (interest_rate / 100) / 12`` for loans whose contractual
+    life overlaps that month. Defaults can be excluded so the figure reflects
+    the performing book (management revenue proxy, not audited NII).
+
+    Returns
+    -------
+    dict with total income, monthly series, and average monthly run-rate.
+    """
+    period_start = pd.Timestamp(period_start or REPORTING_PERIOD_START).normalize()
+    period_end = pd.Timestamp(period_end or REPORTING_PERIOD_END).normalize()
+
+    if loans.empty:
+        return {
+            "total": 0.0,
+            "monthly": pd.DataFrame(columns=["month_end", "interest_income"]),
+            "latest_month": 0.0,
+            "prior_month": 0.0,
+        }
+
+    book = loans.copy()
+    book["loan_date"] = pd.to_datetime(book["loan_date"])
+    # Approximate maturity without row-wise DateOffset (faster on large books).
+    book["maturity_date"] = book["loan_date"] + pd.to_timedelta(
+        book["duration_months"].astype(float) * 30.44, unit="D"
+    )
+    if performing_only and "repayment_status" in book.columns:
+        book = book[book["repayment_status"] != "Default"]
+
+    month_ends = (
+        pd.period_range(start=period_start.to_period("M"), end=period_end.to_period("M"), freq="M")
+        .to_timestamp(how="end")
+        .normalize()
+    )
+
+    rows: list[dict[str, Any]] = []
+    for month_end in month_ends:
+        month_start = (month_end.to_period("M").to_timestamp(how="start")).normalize()
+        active = book[(book["loan_date"] <= month_end) & (book["maturity_date"] >= month_start)]
+        monthly_income = float((active["loan_amount"] * active["interest_rate"] / 100.0 / 12.0).sum())
+        rows.append({"month_end": month_end, "interest_income": monthly_income})
+
+    monthly = pd.DataFrame(rows)
+    total = float(monthly["interest_income"].sum()) if not monthly.empty else 0.0
+    latest = float(monthly["interest_income"].iloc[-1]) if not monthly.empty else 0.0
+    prior = float(monthly["interest_income"].iloc[-2]) if len(monthly) > 1 else 0.0
+
+    return {
+        "total": total,
+        "monthly": monthly,
+        "latest_month": latest,
+        "prior_month": prior,
+    }
+
+
 def apply_chart_theme(fig: go.Figure, subtitle: str | None = None) -> go.Figure:
     """Apply consistent banking styling and optional narrative subtitle."""
     fig.update_layout(**PLOTLY_LAYOUT)
@@ -962,6 +1029,7 @@ __all__ = [
     "create_transaction_charts",
     "create_transaction_volume_trend",
     "enrich_customer_value",
+    "estimate_interest_income",
     "filter_customers",
     "filter_loans",
     "filter_transactions",

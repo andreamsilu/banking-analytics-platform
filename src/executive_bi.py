@@ -22,6 +22,7 @@ from src.dashboard_utils import (
     apply_chart_theme,
     calculate_credit_health,
     enrich_customer_value,
+    estimate_interest_income,
     format_count,
     format_tzs,
     kpi_status,
@@ -67,7 +68,15 @@ def _status_for_kpi(key: str, value: float) -> str:
             "Needs attention": "Needs Attention",
             "Info": "Review",
         }.get(label, label)
-    if key in {"total_customers", "active_customers", "total_deposits", "total_transactions", "loan_portfolio", "avg_balance"}:
+    if key in {
+        "total_customers",
+        "active_customers",
+        "total_deposits",
+        "total_transactions",
+        "loan_portfolio",
+        "avg_balance",
+        "interest_income",
+    }:
         return "Healthy"
     return "Review"
 
@@ -134,6 +143,12 @@ def build_kpi_ribbon(data: dict[str, pd.DataFrame]) -> list[dict[str, Any]]:
     txn_total = len(transactions)
     monthly_txn_mom = _pct_change(len(txn_now), len(txn_prev))
 
+    # H1 estimated interest income (performing book revenue proxy).
+    income_h1 = estimate_interest_income(loans, REPORTING_PERIOD_START, REPORTING_PERIOD_END)
+    income_now = income_h1["latest_month"]
+    income_prev = income_h1["prior_month"]
+    income_total = income_h1["total"]
+
     ribbon = [
         {
             "key": "total_customers",
@@ -164,6 +179,20 @@ def build_kpi_ribbon(data: dict[str, pd.DataFrame]) -> list[dict[str, Any]]:
             "mom_pct": _pct_change(deposits_now, deposits_prev),
             "status": _status_for_kpi("total_deposits", deposits_now),
             "help": "Sum of account balances across the deposit book.",
+        },
+        {
+            "key": "interest_income",
+            "label": "Est. Interest Income",
+            "icon": "trending_up",
+            "value": income_total,
+            "display": format_tzs(income_total),
+            "mom_pct": _pct_change(income_now, income_prev),
+            "status": _status_for_kpi("interest_income", income_total),
+            "help": (
+                "H1 estimated interest income from the performing loan book: "
+                "loan_amount × rate ÷ 12 for each month a loan is contractually active. "
+                "Management revenue proxy — not audited NII."
+            ),
         },
         {
             "key": "total_transactions",
@@ -236,6 +265,7 @@ def build_executive_summary_text(data: dict[str, pd.DataFrame], ribbon: list[dic
     digital = next(item for item in ribbon if item["key"] == "digital_share")
     npl = next(item for item in ribbon if item["key"] == "npl_ratio")
     customers_kpi = next(item for item in ribbon if item["key"] == "total_customers")
+    income_kpi = next((item for item in ribbon if item["key"] == "interest_income"), None)
     credit = calculate_credit_health(loans)
 
     top_channel, channel_share = _top_share(transactions["channel"])
@@ -263,13 +293,18 @@ def build_executive_summary_text(data: dict[str, pd.DataFrame], ribbon: list[dic
         if npl["value"] <= TARGET_NPL_RATIO
         else "Credit risk requires elevated management attention"
     )
+    income_phrase = (
+        f"Estimated H1 interest income from the performing loan book is {income_kpi['display']}."
+        if income_kpi
+        else ""
+    )
 
     return (
         f"Digital banking continues to perform strongly, representing {digital['value']:.0f}% of "
         f"latest-month transactions, led by {top_channel} ({channel_share:.0f}% of all payments). "
         f"{growth_phrase} while {repay_phrase} ({credit['on_time_rate']:.1f}% on time). "
-        f"{risk_phrase}, although {risk_region} requires closer monitoring due to an above-average "
-        f"default rate of {risk_rate:.1f}%."
+        f"{income_phrase} {risk_phrase}, although {risk_region} requires closer monitoring due to an "
+        f"above-average default rate of {risk_rate:.1f}%."
     )
 
 
@@ -722,6 +757,8 @@ def create_monthly_performance_trend(data: dict[str, pd.DataFrame]) -> go.Figure
     accounts = accounts[accounts["opening_date"] <= end]
     loans = loans[loans["loan_date"] <= end]
 
+    income_monthly = estimate_interest_income(loans, start, end)["monthly"]
+
     months = (
         pd.period_range(start=start.to_period("M"), end=end.to_period("M"), freq="M")
         .to_timestamp(how="end")
@@ -756,6 +793,7 @@ def create_monthly_performance_trend(data: dict[str, pd.DataFrame]) -> go.Figure
         .merge(pd.DataFrame(deposit_rows), on="month_end", how="left")
         .merge(pd.DataFrame(loan_rows), on="month_end", how="left")
         .merge(txn_monthly[["month_end", "transaction_value"]], on="month_end", how="left")
+        .merge(income_monthly, on="month_end", how="left")
         .fillna(0.0)
         .sort_values("month_end")
     )
@@ -792,6 +830,16 @@ def create_monthly_performance_trend(data: dict[str, pd.DataFrame]) -> go.Figure
             yaxis="y2",
         )
     )
+    fig.add_trace(
+        go.Scatter(
+            x=trend["period"],
+            y=trend["interest_income"],
+            name="Est. Interest Income",
+            mode="lines+markers",
+            line=dict(color="#f9a825", width=2.5, dash="dash"),
+            yaxis="y2",
+        )
+    )
     # Theme first, then spacing overrides so title/legend do not collide.
     fig = apply_chart_theme(fig)
     fig.update_layout(
@@ -799,8 +847,8 @@ def create_monthly_performance_trend(data: dict[str, pd.DataFrame]) -> go.Figure
             text=(
                 f"<b>Monthly Performance Trend ({REPORTING_PERIOD_LABEL})</b>"
                 "<br><span style='font-size:12px;color:#64748b;font-weight:400;'>"
-                "H1 2026 only · Deposits &amp; loans = cumulative book by month-end · "
-                "Transaction value = monthly flow (right axis)"
+                "H1 2026 only · Deposits &amp; loans = book stock (left) · "
+                "Transaction value &amp; est. interest income = monthly flow (right)"
                 "</span>"
             ),
             x=0,
@@ -810,7 +858,7 @@ def create_monthly_performance_trend(data: dict[str, pd.DataFrame]) -> go.Figure
         ),
         yaxis=dict(title="Book size (TZS)", side="left", title_standoff=14),
         yaxis2=dict(
-            title="Monthly transaction value (TZS)",
+            title="Monthly flow (TZS)",
             overlaying="y",
             side="right",
             showgrid=False,

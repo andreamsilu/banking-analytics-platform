@@ -413,9 +413,10 @@ def render_period_banner(data: dict) -> None:
 
 def render_kpi_ribbon(ribbon: list[dict]) -> None:
     """CEO KPI ribbon: title/value left; icon with status beneath on the right."""
-    for start in (0, 4):
-        cols = st.columns(4)
-        for col, item in zip(cols, ribbon[start : start + 4]):
+    cols_per_row = 3 if len(ribbon) % 3 == 0 else 4
+    for start in range(0, len(ribbon), cols_per_row):
+        cols = st.columns(cols_per_row)
+        for col, item in zip(cols, ribbon[start : start + cols_per_row]):
             mom = format_mom(item["mom_pct"], item.get("mom_is_pp", False))
             icon = item.get("icon", "analytics")
             pct = float(item["mom_pct"])
@@ -730,11 +731,19 @@ def page_credit(data: dict) -> None:
     st.caption(f"Showing **{len(filtered):,}** of **{len(loans):,}** loans.")
 
     credit = du.calculate_credit_health(filtered)
-    c1, c2, c3, c4 = st.columns(4)
+    income = du.estimate_interest_income(
+        filtered, du.REPORTING_PERIOD_START, du.REPORTING_PERIOD_END
+    )
+    c1, c2, c3, c4, c5 = st.columns(5)
     c1.metric("On-time repayment", f"{credit['on_time_rate']:.1f}%")
     c2.metric("Watchlist (late)", f"{credit['watchlist_rate']:.1f}%")
     c3.metric("Default rate", f"{credit['default_rate']:.1f}%")
     c4.metric("NPL ratio (late+default)", f"{credit['at_risk_rate']:.1f}%")
+    c5.metric(
+        "Est. H1 interest income",
+        du.format_tzs(income["total"]),
+        help="Approximate interest accrued in H1 2026 on the performing book (loan × rate ÷ 12 × active months).",
+    )
 
     col1, col2 = st.columns(2)
     with col1:
