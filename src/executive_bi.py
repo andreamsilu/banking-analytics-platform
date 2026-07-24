@@ -792,17 +792,41 @@ def create_monthly_performance_trend(data: dict[str, pd.DataFrame]) -> go.Figure
             yaxis="y2",
         )
     )
+    # Theme first, then spacing overrides so title/legend do not collide.
+    fig = apply_chart_theme(fig)
     fig.update_layout(
-        title=f"Monthly Performance Trend ({REPORTING_PERIOD_LABEL})",
-        yaxis=dict(title="Book size (TZS)", side="left"),
-        yaxis2=dict(title="Monthly transaction value (TZS)", overlaying="y", side="right", showgrid=False),
-        legend=dict(orientation="h", yanchor="bottom", y=1.02, x=0),
-        hovermode="x unified",
-    )
-    return apply_chart_theme(
-        fig,
-        subtitle=(
-            "H1 2026 only · Deposits & loans = cumulative book by month-end · "
-            "Transaction value = monthly flow (right axis)."
+        title=dict(
+            text=(
+                f"<b>Monthly Performance Trend ({REPORTING_PERIOD_LABEL})</b>"
+                "<br><span style='font-size:12px;color:#64748b;font-weight:400;'>"
+                "H1 2026 only · Deposits &amp; loans = cumulative book by month-end · "
+                "Transaction value = monthly flow (right axis)"
+                "</span>"
+            ),
+            x=0,
+            xanchor="left",
+            y=0.98,
+            pad=dict(b=18),
         ),
+        yaxis=dict(title="Book size (TZS)", side="left", title_standoff=14),
+        yaxis2=dict(
+            title="Monthly transaction value (TZS)",
+            overlaying="y",
+            side="right",
+            showgrid=False,
+            title_standoff=14,
+        ),
+        legend=dict(
+            orientation="h",
+            yanchor="top",
+            y=-0.24,
+            x=0,
+            xanchor="left",
+            bgcolor="rgba(0,0,0,0)",
+            font=dict(size=12),
+        ),
+        margin=dict(l=68, r=76, t=110, b=96),
+        hovermode="x unified",
+        height=480,
     )
+    return fig
